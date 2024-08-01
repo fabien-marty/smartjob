@@ -1,14 +1,12 @@
 import asyncio
 import concurrent.futures
-import os
 from typing import Any
 
+from google.api_core.exceptions import PreconditionFailed
 from google.cloud import storage  # type: ignore
 
 from smartjob.app.exception import SmartJobException
 from smartjob.app.file_uploader import FileUploaderPort
-
-from google.api_core.exceptions import PreconditionFailed
 
 
 class GcsFileUploaderAdapter(FileUploaderPort):
@@ -39,12 +37,17 @@ class GcsFileUploaderAdapter(FileUploaderPort):
         return f"gs://{destination_bucket}/{destination_path}"
 
     async def upload(
-        self, content: str, destination_bucket: str, destination_path: str
+        self,
+        content: str,
+        destination_bucket: str,
+        destination_path: str,
+        only_if_not_exists: bool = True,
     ) -> str:
         cf_future = self.executor.submit(
             self.sync_upload,
             content,
             destination_bucket,
             destination_path,
+            only_if_not_exists=only_if_not_exists,
         )
         return await asyncio.wrap_future(cf_future)
