@@ -1,0 +1,2 @@
+class SmartJobException(Exception):
+    pass
