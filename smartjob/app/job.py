@@ -171,8 +171,8 @@ class CloudRunSmartJob(SmartJob):
     # cpu is the number of requested CPUs.
     cpu: float = 1
 
-    # memoryGb is the requested memory in Gb.
-    memoryGb: float = 0.5
+    # memory_gb is the requested memory in Gb.
+    memory_gb: float = 0.5
 
     @property
     def job_hash(self) -> str:
@@ -207,7 +207,7 @@ class CloudRunSmartJob(SmartJob):
 
     @property
     def _memoryLimit(self) -> str:
-        return "%f" % self.memoryGb + "Gi"
+        return "%f" % self.memory_gb + "Gi"
 
     @property
     def staging_mount_point(self) -> str:

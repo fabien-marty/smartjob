@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import datetime
 import logging
+import shlex
 import sys
 import typing
 from threading import Lock
@@ -11,12 +12,14 @@ from google.cloud.aiplatform_v1.types import custom_job as custom_job_v1
 from google.cloud.aiplatform_v1.types import job_state as gca_job_state
 from google.cloud.aiplatform_v1.types.env_var import EnvVar
 from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, MachineSpec
+from stlog import getLogger
 
 from smartjob.app.executor import SmartJobExecutorPort
 from smartjob.app.job import SmartJob, SmartJobExecutionResult, VertexSmartJob
 
 aiplatform_mutex = Lock()
 aiplatform_initialized: bool = False
+logger = getLogger("smartjob.executor.vertex")
 
 
 def monkey_patch_aiplatform_jobs_logger():
@@ -89,6 +92,15 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                     ),
                 )
             ],
+        )
+        logger.info(
+            "Let's trigger a new execution of Vertex Job: %s...",
+            f"{job.namespace}-{job.name}-{job.short_id}",
+            docker_image=job.docker_image,
+            overridden_args=shlex.join(job.overridden_args),
+            overriden_envs=", ".join(
+                [f"{x}={y}" for x, y in job.overridden_envs.items()]
+            ),
         )
         try:
             customJob.run()

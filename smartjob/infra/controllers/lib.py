@@ -5,11 +5,13 @@ from smartjob.infra.adapters.executor.cloudrun import CloudRunSmartJobExecutor
 from smartjob.infra.adapters.executor.vertex import VertexSmartJobExecutor
 from smartjob.infra.adapters.file_uploader.gcs import GcsFileUploaderAdapter
 
+# Default max workers for vertex executor and for file uploader (cloud run executor is not multi-threaded)
+DEFAULT_MAX_WORKERS = 10
 __singleton: SmartJobExecutorService | None = None
 
 
 def get_smart_job_executor_service_singleton(
-    max_workers: int = 10,
+    max_workers: int = DEFAULT_MAX_WORKERS,
     namespace: str | None = None,
     project: str | None = None,
     region: str | None = None,

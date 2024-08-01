@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import shlex
 import typing
 from dataclasses import dataclass
 
@@ -146,7 +147,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                     ),
                 ),
             )
-            logger.debug(
+            logger.info(
                 "Let's create a new Cloud Run Job: %s...", job.cloud_run_job_name
             )
             operation = await self.client.create_job(request=request)
@@ -174,9 +175,14 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                 ],
             ),
         )
-        logger.debug(
+        logger.info(
             "Let's trigger a new execution of Cloud Run Job: %s...",
             job.cloud_run_job_name,
+            docker_image=job.docker_image,
+            overridden_args=shlex.join(job.overridden_args),
+            overriden_envs=", ".join(
+                [f"{x}={y}" for x, y in job.overridden_envs.items()]
+            ),
         )
         operation = await self.client.run_job(request=request)
         log_url = ""

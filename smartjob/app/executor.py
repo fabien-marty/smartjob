@@ -74,7 +74,7 @@ class SmartJobExecutorService:
     async def _create_input_output_paths_if_needed(self, job: SmartJob):
         coroutines: list[typing.Coroutine] = []
         if job.input_bucket_path:
-            logger.debug(
+            logger.info(
                 "Creating input path gs://%s/%s/...",
                 job.input_bucket_name,
                 job._input_path,
@@ -85,7 +85,7 @@ class SmartJobExecutorService:
                 )
             )
         if job.output_bucket_path:
-            logger.debug(
+            logger.info(
                 "Creating output path gs://%s/%s/...",
                 job.output_bucket_name,
                 job._output_path,
@@ -109,7 +109,7 @@ class SmartJobExecutorService:
             content = f.read()
         sha = hashlib.sha1(content.encode()).hexdigest()
         destination_path = f"{job.full_name}/{sha[0:2]}/{sha}.py"
-        logger.debug(
+        logger.info(
             "Uploading python script (%s) to %s/%s...",
             job.python_script_path,
             job.staging_bucket,
