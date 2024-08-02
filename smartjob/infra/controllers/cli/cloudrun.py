@@ -1,51 +1,42 @@
-import asyncio
 import shlex
-import sys
 
 import typer
 
-from smartjob.app.executor import SmartJobExecutorService
-from smartjob.app.job import CloudRunSmartJob, SmartJobExecutionResult
-from smartjob.infra.controllers.cli.utils import get_job_service, init_stlog
+from smartjob.app.job import CloudRunSmartJob
+from smartjob.infra.controllers.cli.utils import (
+    DockerImageArgument,
+    InputBucketBasePathArgument,
+    InputBucketPathArgument,
+    NameArgument,
+    OutputBucketBasePathArgument,
+    OutputBucketPathArgument,
+    OverrideCommandArgument,
+    OverrideEnvArgument,
+    PythonScriptPathArgument,
+    StagingBucketArgument,
+    WaitArgument,
+    cli_process,
+    get_job_service,
+    init_stlog,
+)
 
 cli = typer.Typer()
-
-
-async def _run(
-    service: SmartJobExecutorService, job: CloudRunSmartJob
-) -> SmartJobExecutionResult:
-    return await service.run(job)
 
 
 @cli.command()
 def run(
     ctx: typer.Context,
-    name: str = typer.Argument(help="Name of the job"),
-    docker_image: str = typer.Option("", help="Docker image to use"),
-    override_command_and_args: str = typer.Option(
-        "",
-        help="Override docker image command and arguments",
-    ),
-    override_env: list[str] = typer.Option(
-        [],
-        help="Override docker image env vars (key=value, can be used multiple times)",
-    ),
-    staging_bucket: str = typer.Option(
-        None,
-        envvar="SMARTJOB_STAGING_BUCKET",
-        help="staging bucket (starting with gs://) for loading python_script_path",
-    ),
-    input_bucket_base_path: str = typer.Option(
-        None, envvar="SMARTJOB_INPUT_BUCKET_BASE_PATH"
-    ),
-    output_bucket_base_path: str = typer.Option(
-        None, envvar="SMARTJOB_OUTPUT_BUCKET_BASE_PATH"
-    ),
-    input_bucket_path: str = typer.Option(""),
-    output_bucket_path: str = typer.Option(""),
-    python_script_path: str = typer.Option(
-        "", help="local path to python script to execute in the container"
-    ),
+    name: str = NameArgument,
+    docker_image: str = DockerImageArgument,
+    override_command_and_args: str = OverrideCommandArgument,
+    override_env: list[str] = OverrideEnvArgument,
+    staging_bucket: str = StagingBucketArgument,
+    input_bucket_base_path: str = InputBucketBasePathArgument,
+    output_bucket_base_path: str = OutputBucketBasePathArgument,
+    input_bucket_path: str = InputBucketPathArgument,
+    output_bucket_path: str = OutputBucketPathArgument,
+    python_script_path: str = PythonScriptPathArgument,
+    wait: bool = WaitArgument,
     cpu: float = typer.Option(1.0, help="Number of CPUs"),
     memory_gb: float = typer.Option(0.5, help="Memory in Gb"),
 ):
@@ -71,13 +62,4 @@ def run(
         cpu=cpu,
         memory_gb=memory_gb,
     )
-    result = asyncio.run(_run(service, job))
-    return_code = 0
-    if result:
-        print("SUCCESS in %i seconds" % result.duration_seconds)
-    else:
-        print("FAILED in %i seconds" % result.duration_seconds)
-        return_code = 2
-    print("Id:   %s" % result.job.id)
-    print("Logs: %s" % result.log_url)
-    sys.exit(return_code)
+    cli_process(service, job, wait)

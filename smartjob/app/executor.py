@@ -1,9 +1,10 @@
 import asyncio
+import datetime
 import hashlib
 import os
-import typing
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Coroutine
 
 from stlog import LogContext, getLogger
 
@@ -20,9 +21,64 @@ from smartjob.app.job import (
 logger = getLogger("smartjob.executor")
 
 
+class SmartJobExecutionResultFuture(ABC):
+    def __init__(
+        self,
+        coroutine: Coroutine,
+        job: SmartJob,
+    ):
+        self.job = job
+        self.__result: SmartJobExecutionResult | None = None
+        self.__task = asyncio.create_task(coroutine)
+        self.__task.add_done_callback(self._task_done)
+
+    async def result(self) -> SmartJobExecutionResult:
+        if self.__result is not None:
+            return self.__result
+        task_result = await self.__task
+        res = self._get_result(task_result)
+        if self.__result is not None:
+            res.stopped = self.__result.stopped
+        else:
+            res.stopped = datetime.datetime.now(tz=datetime.timezone.utc)
+        return res
+
+    def done(self) -> bool:
+        return self.__task.done()
+
+    @abstractmethod
+    def _get_result(self, task_result) -> SmartJobExecutionResult:
+        pass
+
+    @abstractmethod
+    def _get_result_from_future(self, future) -> SmartJobExecutionResult:
+        pass
+
+    def _task_done(self, future: asyncio.Future):
+        self.__result = self._get_result_from_future(future)
+        self.__result.stopped = datetime.datetime.now(tz=datetime.timezone.utc)
+        if self.job.cancelled:
+            return
+        if self.__result.success:
+            logger.info(
+                "Smartjob execution succeeded",
+                duration_seconds=self.__result.duration_seconds,
+            )
+        else:
+            logger.warn(
+                "Smartjob execution failed",
+                log_url=self.__result.log_url,
+                duration_seconds=self.__result.duration_seconds,
+            )
+
+    @property
+    def log_url(self) -> str | None:
+        return self.job.log_url
+
+
 class SmartJobExecutorPort(ABC):
     @abstractmethod
-    async def run(self, job: SmartJob) -> SmartJobExecutionResult:
+    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
         pass
 
 
@@ -71,8 +127,12 @@ class SmartJobExecutorService:
         if job.output_bucket_path:
             job.overridden_envs["OUTPUT_PATH"] = job.output_path
 
+    def _update_some_job_properties(self, job: SmartJob):
+        job.created = datetime.datetime.now(tz=datetime.timezone.utc)
+        job.set_execution_id()
+
     async def _create_input_output_paths_if_needed(self, job: SmartJob):
-        coroutines: list[typing.Coroutine] = []
+        coroutines: list[Coroutine] = []
         if job.input_bucket_path:
             logger.info(
                 "Creating input path gs://%s/%s/...",
@@ -129,14 +189,16 @@ class SmartJobExecutorService:
             f"{job.staging_mount_point}/{destination_path}",
         ] + job.overridden_args
 
-    async def run(self, job: SmartJob) -> SmartJobExecutionResult:
+    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
+        """Schedule a job and return a kind of future you can wait with `await future.result()`."""
+        self._update_some_job_properties(job)
         self._update_job_with_default_parameters(job)
         self._update_job_with_input_output(job)
         job.assert_is_ready()
         LogContext.reset_context()
         LogContext.add(
             job_name=job.name,
-            job_id=job.id,
+            execution_short_id=job.short_execution_id,
             job_namespace=job.namespace,
             project=job.project,
             region=job.region,
@@ -144,21 +206,16 @@ class SmartJobExecutorService:
         logger.info("Starting a smartjob...")
         await self._create_input_output_paths_if_needed(job)
         await self._upload_python_script_if_needed_and_update_overridden_args(job)
-        res: SmartJobExecutionResult
+        res: SmartJobExecutionResultFuture
         if isinstance(job, CloudRunSmartJob):
-            res = await self.cloudrun_executor_adapter.run(job)
+            res = await self.cloudrun_executor_adapter.schedule(job)
         elif isinstance(job, VertexSmartJob):
-            res = await self.vertex_executor_adapter.run(job)
+            res = await self.vertex_executor_adapter.schedule(job)
         else:
             raise SmartJobException("Unknown job type")
-        if res.success:
-            logger.info(
-                "Smartjob execution succeeded", duration_seconds=res.duration_seconds
-            )
-        else:
-            logger.warn(
-                "Smartjob execution failed",
-                log_url=res.log_url,
-                duration_seconds=res.duration_seconds,
-            )
         return res
+
+    async def run(self, job: SmartJob) -> SmartJobExecutionResult:
+        """Schedule a job and wait for its completion."""
+        future = await self.schedule(job)
+        return await future.result()

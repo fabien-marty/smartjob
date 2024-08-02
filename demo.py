@@ -1,6 +1,6 @@
 import asyncio
 
-from devtools import debug
+from rich import print as rprint
 from stlog import setup
 
 from smartjob import CloudRunSmartJob, get_smart_job_executor_service_singleton
@@ -16,12 +16,17 @@ async def main():
     job = CloudRunSmartJob(
         name="foo", docker_image="python:3.12", overridden_args=["python", "--version"]
     )
-    future1 = job_service.run(job)
-    future2 = job_service.run(job)
-    result1 = await future1
-    result2 = await future2
-    debug(result1)
-    debug(result2)
+    future1 = await job_service.schedule(job)
+    future2 = await job_service.schedule(job)
+    # result1 = await future1
+    # result2 = await future2
+    # print("waiting...")
+    # await asyncio.sleep(30)
+    # print("done waiting")
+    result1 = await future1.result()
+    result2 = await future2.result()
+    rprint(result1.asdict())
+    rprint(result2.asdict())
 
 
 if __name__ == "__main__":

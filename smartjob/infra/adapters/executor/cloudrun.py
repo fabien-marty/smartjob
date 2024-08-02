@@ -1,14 +1,14 @@
 import asyncio
 import datetime
 import shlex
-import typing
 from dataclasses import dataclass
+from typing import cast
 
 import google.api_core.exceptions as gac_exceptions
 from google.cloud import run_v2
 from stlog import getLogger
 
-from smartjob.app.executor import SmartJobExecutorPort
+from smartjob.app.executor import SmartJobExecutionResultFuture, SmartJobExecutorPort
 from smartjob.app.job import CloudRunSmartJob, SmartJob, SmartJobExecutionResult
 
 logger = getLogger("smartjob.executor.cloudrun")
@@ -18,6 +18,32 @@ logger = getLogger("smartjob.executor.cloudrun")
 class JobListCacheKey:
     project: str
     region: str
+
+
+class CloudRunSmartJobExecutionResultFuture(SmartJobExecutionResultFuture):
+    def _get_result_from_future(
+        self, future: asyncio.Future
+    ) -> SmartJobExecutionResult:
+        try:
+            result = future.result()
+            return self._get_result(result)
+        except gac_exceptions.GoogleAPICallError:
+            pass
+        except asyncio.CancelledError:
+            self.job.cancelled = True
+        return SmartJobExecutionResult(
+            job=self.job,
+            success=False,
+        )
+
+    def _get_result(self, task_result) -> SmartJobExecutionResult:
+        success = False
+        castedResult = cast(run_v2.Execution, task_result)
+        success = castedResult.succeeded_count > 0
+        return SmartJobExecutionResult(
+            job=self.job,
+            success=success,
+        )
 
 
 class CloudRunSmartJobExecutor(SmartJobExecutorPort):
@@ -143,6 +169,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                             ],
                             volumes=volumes,
                             max_retries=1,
+                            service_account=job.service_account,
                         ),
                     ),
                 ),
@@ -155,14 +182,18 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
             logger.debug("Done creating Cloud Run Job: %s", job.cloud_run_job_name)
             self.reset_job_list_cache(job.project, job.region)
 
-    async def run(self, job: SmartJob) -> SmartJobExecutionResult:
-        job = typing.cast(CloudRunSmartJob, job)
-        created = datetime.datetime.now(tz=datetime.timezone.utc)
+    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
+        if not job.created:
+            job.created = datetime.datetime.now(tz=datetime.timezone.utc)
+        if not job.execution_id:
+            job.set_execution_id()
+        job = cast(CloudRunSmartJob, job)
         await self.create_job_if_needed(job)
         request = run_v2.RunJobRequest(
             name=job.full_cloud_run_job_name,
             overrides=run_v2.RunJobRequest.Overrides(
                 task_count=1,
+                # timeout=job.timeout_seconds,
                 container_overrides=[
                     run_v2.RunJobRequest.Overrides.ContainerOverride(
                         name="container-1",
@@ -180,28 +211,11 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
             job.cloud_run_job_name,
             docker_image=job.docker_image,
             overridden_args=shlex.join(job.overridden_args),
-            overriden_envs=", ".join(
+            overridden_envs=", ".join(
                 [f"{x}={y}" for x, y in job.overridden_envs.items()]
             ),
+            timeout_s=job.timeout_seconds,
         )
         operation = await self.client.run_job(request=request)
-        log_url = ""
-        success = False
-        try:
-            result = await operation.result()
-            castedResult = typing.cast(run_v2.Execution, result)
-            log_url = castedResult.log_uri
-            success = castedResult.succeeded_count > 0
-        except gac_exceptions.GoogleAPICallError:
-            try:
-                log_url = operation.metadata.logs_uri
-            except Exception:
-                pass
-        stopped = datetime.datetime.now(tz=datetime.timezone.utc)
-        return SmartJobExecutionResult(
-            job=job,
-            success=success,
-            log_url=log_url,
-            created=created,
-            stopped=stopped,
-        )
+        job.log_url = operation.metadata.log_uri
+        return CloudRunSmartJobExecutionResultFuture(operation.result(), job=job)
