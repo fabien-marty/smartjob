@@ -48,8 +48,8 @@ class SmartJob:
     Example: `docker.io/python:3.12`.
     """
 
-    overridden_envs: dict[str, str] = field(default_factory=dict)
-    """Environnement variables to inject into the container.
+    add_envs: dict[str, str] = field(default_factory=dict)
+    """Environnement variables to add in the container.
 
     Note: `INPUT_PATH` and `OUTPUT_PATH` will be automatically injected (if relevant).
     """
@@ -306,7 +306,7 @@ class SmartJobExecution:
     )
     log_url: str | None = field(default=None, init=False)
     cancelled: bool = field(default=False, init=False)
-    overridden_envs: dict[str, str] = field(default_factory=dict)
+    add_envs: dict[str, str] = field(default_factory=dict)
     overridden_args: list[str] = field(default_factory=list)
 
     @property

@@ -52,7 +52,7 @@ def run(
         name=name,
         docker_image=docker_image,
         overridden_args=overriden_args,
-        overridden_envs=overriden_envs,
+        add_envs=overriden_envs,
         staging_bucket=staging_bucket,
         input_bucket_path=input_bucket_path,
         output_bucket_path=output_bucket_path,

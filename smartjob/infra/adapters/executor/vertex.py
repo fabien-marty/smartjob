@@ -89,7 +89,7 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                         args=execution.overridden_args,
                         env=[
                             EnvVar(name=k, value=v)
-                            for k, v in execution.overridden_envs.items()
+                            for k, v in execution.add_envs.items()
                         ],
                     ),
                     machine_spec=MachineSpec(
@@ -109,9 +109,7 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
             f"{job.namespace}-{job.name}-{execution.short_id}",
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
-            overridden_envs=", ".join(
-                [f"{x}={y}" for x, y in execution.overridden_envs.items()]
-            ),
+            add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
         )
         try:
             customJob.submit(

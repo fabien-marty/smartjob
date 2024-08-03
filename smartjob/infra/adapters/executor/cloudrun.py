@@ -195,7 +195,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                         args=execution.overridden_args,
                         env=[
                             run_v2.EnvVar(name=k, value=v)
-                            for k, v in execution.overridden_envs.items()
+                            for k, v in execution.add_envs.items()
                         ],
                     )
                 ],
@@ -206,9 +206,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
             job.cloud_run_job_name,
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
-            overridden_envs=", ".join(
-                [f"{x}={y}" for x, y in execution.overridden_envs.items()]
-            ),
+            add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
             timeout_s=job.timeout_seconds,
         )
         operation = await self.client.run_job(request=request)

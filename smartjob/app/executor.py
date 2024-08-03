@@ -155,10 +155,10 @@ class SmartJobExecutorService:
     def _update_execution_env(self, execution: SmartJobExecution):
         job = execution.job
         if job.input_bucket_path:
-            execution.overridden_envs["INPUT_PATH"] = job.input_path
+            execution.add_envs["INPUT_PATH"] = job.input_path
         if job.output_bucket_path:
-            execution.overridden_envs["OUTPUT_PATH"] = job.output_path
-        execution.overridden_envs["EXECUTION_ID"] = execution.id
+            execution.add_envs["OUTPUT_PATH"] = job.output_path
+        execution.add_envs["EXECUTION_ID"] = execution.id
 
     async def _create_input_output_paths_if_needed(self, job: SmartJob):
         coroutines: list[Coroutine] = []
@@ -217,7 +217,7 @@ class SmartJobExecutorService:
         execution.overridden_args = [
             "python",
             f"{job.staging_mount_point}/{destination_path}",
-        ] + job.overridden_args
+        ]
 
     async def schedule(
         self,
@@ -237,7 +237,7 @@ class SmartJobExecutorService:
         execution = SmartJobExecution(
             job,
             overridden_args=list(job.overridden_args),
-            overridden_envs={**job.overridden_envs, **(add_envs or {})},
+            add_envs={**job.add_envs, **(add_envs or {})},
         )
         self._update_job_with_default_parameters(job, execution_id=execution.id)
         self._update_execution_env(execution)
