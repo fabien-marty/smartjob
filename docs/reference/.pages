@@ -1,0 +1,3 @@
+nav:
+  - Public API: api
+  - CLI: cli.md

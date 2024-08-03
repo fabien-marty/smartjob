@@ -1,9 +1,13 @@
 from types import SimpleNamespace
 
 import typer
+import typer.core
 
 from smartjob.infra.controllers.cli.cloudrun import cli as cloudrun_cli
 from smartjob.infra.controllers.cli.vertex import cli as vertex_cli
+
+# Disable rich usage for CLI doc generation
+typer.core.rich = None  # type: ignore
 
 cli = typer.Typer(add_completion=False)
 cli.add_typer(cloudrun_cli, name="cloudrun")

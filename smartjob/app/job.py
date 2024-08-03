@@ -22,13 +22,45 @@ def _unique_id() -> str:
 
 @dataclass
 class SmartJob:
+    """Base class for smart jobs."""
+
     name: str
-    project: str = ""
-    region: str = ""
-    docker_image: str = ""
-    overridden_envs: dict[str, str] = field(default_factory=dict)
-    overridden_args: list[str] = field(default_factory=list)
+    """Name of the job."""
+
     namespace: str = DEFAULT_NAMESPACE
+    """Namespace of the job."""
+
+    project: str = ""
+    """GCP project to use for executing the job.
+
+    If not set here, the value will be forced by the SmartJobExecutorService object.
+    """
+
+    region: str = ""
+    """GCP region where to execute the job.
+
+    If not set here, the value will be forced by the SmartJobExecutorService object.
+    """
+
+    docker_image: str = ""
+    """Docker image to use for the job.
+
+    Example: `docker.io/python:3.12`.
+    """
+
+    overridden_envs: dict[str, str] = field(default_factory=dict)
+    """Environnement variables to inject into the container.
+
+    Note: `INPUT_PATH` and `OUTPUT_PATH` will be automatically injected (if relevant).
+    """
+
+    overridden_args: list[str] = field(default_factory=list)
+    """Container arguments (including command) to use.
+
+    If not set, the default container image arguments will be used.
+
+    """
+
     python_script_path: str = ""
     staging_bucket: str = ""
     input_bucket_path: str = ""
@@ -280,6 +312,15 @@ class VertexSmartJob(SmartJob):
 
 
 class SmartJobExecutionResult:
+    """SmartJobExecutionResult is the (final) result of a job execution.
+
+    Attributes:
+        job: The executed job.
+        success: Whether the job has succeeded or not.
+        stopped: The datetime when the job has stopped.
+
+    """
+
     def __init__(
         self,
         job: SmartJob,
@@ -303,6 +344,7 @@ class SmartJobExecutionResult:
         return f"SmartJobExecutionResult(short_execution_id={self.job.short_execution_id}, job_name={self.job.name}, job_namespace={self.job.namespace}): {state} in {self.duration_seconds or -1} seconds"
 
     def asdict(self) -> dict:
+        """Return this object as a dictionary."""
         return {
             "success": self.success,
             "created": self.created,
@@ -313,18 +355,21 @@ class SmartJobExecutionResult:
 
     @property
     def duration_seconds(self) -> int | None:
+        """The duration of the job in seconds."""
         if self.stopped is None:
             return None
         return (self.stopped - self.created).seconds
 
     @property
     def created(self) -> datetime.datetime:
+        """The datetime when the job has started."""
         if not self.job.created:
             raise SmartJobException("created is not set")
         return self.job.created
 
     @property
     def log_url(self) -> str:
+        """The log url of the job."""
         if not self.job.log_url:
             raise SmartJobException("log_url is not set")
         return self.job.log_url

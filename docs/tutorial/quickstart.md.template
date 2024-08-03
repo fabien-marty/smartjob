@@ -1,0 +1,19 @@
+{{ JINJA_TREE_STYLE1_GENERATED_COMMENT }}
+
+# Quickstart
+
+## Installation
+
+`pip install smartjob`
+
+## Very basic usage as a library
+
+``` python
+{{ "cat quickstart1.py"|shell() }}
+```
+
+## Use async features of Python to launch 10 jobs in parallel
+
+``` python
+{{ "cat quickstart2.py"|shell() }}
+```

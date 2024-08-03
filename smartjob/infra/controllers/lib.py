@@ -20,6 +20,26 @@ def get_smart_job_executor_service_singleton(
     input_bucket_base_path: str | None = None,
     output_bucket_base_path: str | None = None,
 ) -> SmartJobExecutorService:
+    """Return a singleton instance of SmartJobExecutorService (initialized on first call with given arguments).
+
+    Most of the arguments are optional and can also be set via environment variables or at SmartJob level.
+
+    See SmartJobExecutorService or SmartJob for more details on the arguments.
+
+    Args:
+        max_workers: Maximum number of workers for the vertex executor and for the file uploader.
+        namespace: Default namespace to use.
+        project: Default project to use.
+        region: Default region to use.
+        staging_bucket: Default staging bucket to use.
+        docker_image: Default docker image to use.
+        input_bucket_base_path: Default input bucket base path to use.
+        output_bucket_base_path: Default output bucket base path to use.
+
+    Returns:
+        Instance of SmartJobExecutorService.
+
+    """
     global __singleton
     if __singleton is None:
         kwargs: dict[str, Any] = {}

@@ -8,6 +8,8 @@ LINT_IMPORTS=$(POETRY_RUN) lint-imports
 MYPY=$(POETRY_RUN) mypy
 PYTEST=$(POETRY_RUN) pytest
 PYTHON=$(POETRY_RUN) python
+JINJA_TREE=$(POETRY_RUN) jinja-tree
+MKDOCS=$(POETRY_RUN) mkdocs
 
 default: help
 
@@ -51,15 +53,17 @@ endif
 
 .PHONY: clean
 clean: ## Clean generated files
-	cd deploy && $(MAKE) -s clean
 	rm -Rf .*_cache build
 	find . -type d -name __pycache__ -exec rm -Rf {} \; 2>/dev/null || true
 	rm -Rf .venv
+	rm -Rf html
+	rm -Rf site
 
-.PHONY: deploy
-deploy: ## Deploy the app (you must pass DIGEST=sha256:xxxx)
-	@if test "$(DIGEST)" = ""; then echo "You must pass DIGEST as param, example: make DIGEST=sha256:xxxx deploy"; exit 1; fi
-	cd deploy && $(MAKE) -s DIGEST=$(DIGEST) deploy
+.PHONY: doc
+doc: check_poetry ## Generate the documentation
+	cp -f README.md docs/index.md
+	$(JINJA_TREE) .
+	$(MKDOCS) build --clean --strict 
 
 .PHONY: help
 help:

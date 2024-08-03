@@ -22,6 +22,13 @@ logger = getLogger("smartjob.executor")
 
 
 class SmartJobExecutionResultFuture(ABC):
+    """Future-like object to get the result of a job execution.
+
+    Attributes:
+        job: The job that was scheduled.
+
+    """
+
     def __init__(
         self,
         coroutine: Coroutine,
@@ -33,6 +40,15 @@ class SmartJobExecutionResultFuture(ABC):
         self.__task.add_done_callback(self._task_done)
 
     async def result(self) -> SmartJobExecutionResult:
+        """Wait and return the result of the job execution.
+
+        This is a coroutine. You have to wait for it to complete with (for example):
+        `res = await future.result()`
+
+        Returns:
+            The result of the job execution.
+
+        """
         if self.__result is not None:
             return self.__result
         task_result = await self.__task
@@ -44,6 +60,7 @@ class SmartJobExecutionResultFuture(ABC):
         return res
 
     def done(self) -> bool:
+        """Return True if the job execution is done."""
         return self.__task.done()
 
     @abstractmethod
@@ -73,6 +90,7 @@ class SmartJobExecutionResultFuture(ABC):
 
     @property
     def log_url(self) -> str | None:
+        """Return the URL to the logs of the job execution."""
         return self.job.log_url
 
 
@@ -190,7 +208,15 @@ class SmartJobExecutorService:
         ] + job.overridden_args
 
     async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
-        """Schedule a job and return a kind of future you can wait with `await future.result()`."""
+        """Schedule a job and return a kind of future.
+
+        Arguments:
+            job: The job to run.
+
+        Returns:
+            The result of the job execution as a kind of future.
+
+        """
         self._update_some_job_properties(job)
         self._update_job_with_default_parameters(job)
         self._update_job_with_input_output(job)
@@ -216,6 +242,14 @@ class SmartJobExecutorService:
         return res
 
     async def run(self, job: SmartJob) -> SmartJobExecutionResult:
-        """Schedule a job and wait for its completion."""
+        """Schedule a job and wait for its completion.
+
+        Arguments:
+            job: The job to run.
+
+        Returns:
+            The result of the job execution.
+
+        """
         future = await self.schedule(job)
         return await future.result()

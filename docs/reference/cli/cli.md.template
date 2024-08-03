@@ -1,0 +1,45 @@
+{{ JINJA_TREE_STYLE1_GENERATED_COMMENT }}
+
+# CLI reference
+
+## Main/global options
+
+Main options are:
+
+```console
+
+$ smartjob --help
+
+{{ "smartjob --help"|shell() }}
+```
+
+!!! tip
+
+    You can define main/global options by setting environment variables.
+    This is probably the most convenient way.
+
+## `cloudrun` command
+
+To execute jobs on Cloud Run, you have to use the `cloudrun` CLI command.
+
+For the moment, it has only a `run` sub-command:
+
+``` console
+
+$ smartjob cloudrun run --help
+
+{{ "smartjob cloudrun run --help"|shell() }}
+```
+
+## `vertex` command
+
+To execute jobs on Vertex AI jobs, you have to use the `vertex` CLI command.
+
+For the moment, it has only a `run` sub-command:
+
+``` console
+
+$ smartjob vertex run --help
+
+{{ "smartjob vertex run --help"|shell() }}
+```
