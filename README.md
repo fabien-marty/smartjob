@@ -16,4 +16,8 @@
 
 ## Quickstart
 
-[Let's go 🚀]({% if JINJA_TREE_RELATIVE_FILEPATH == "README.md.template" %}{% else %}/tutorial/quickstart/{% endif %}) 
+[Let's go 🚀](https://fabien-marty.github.io/smartjob/tutorial/quickstart/)
+
+## Documentation
+
+[https://fabien-marty.github.io/smartjob/](https://fabien-marty.github.io/smartjob/)
