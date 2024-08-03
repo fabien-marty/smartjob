@@ -50,6 +50,34 @@ jobs:
         run: |
           make no-dirty
 
+  githubpages:
+    runs-on: ubuntu-22.04
+    needs: lint_and_test
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+    # FIXME: change to main
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push' 
+    steps: 
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
   publish_pypi:
     runs-on: ubuntu-latest
     needs: lint_and_test
