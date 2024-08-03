@@ -3,6 +3,7 @@ name: ci
 on:
   push:
   release:
+    types: [published]
   pull_request:
 
 env:
@@ -81,10 +82,14 @@ jobs:
   publish_pypi:
     runs-on: ubuntu-latest
     needs: lint_and_test
-    if: github.event_name == 'release' && github.event.action == 'created'
+    if: github.event_name == 'release'
     steps:
       - name: Check out repository code
         uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
       - name: Install poetry
         run: |
           python3 -m venv $POETRY_HOME
@@ -97,7 +102,10 @@ jobs:
           poetry install
       - name: Publish on Pypi
         run: |
-          poetry run invoke bump-version
+          VERSION=`echo "${{ github.event.release.tag_name }}" |sed 's/^v//g'`
+          cat pyproject.toml |sed 's/^version = ".*"$/version = "'${VERSION}'"/g' > pyproject.toml.new
+          mv -f pyproject.toml.new pyproject.toml
+          cat pyproject.toml |grep ^version
           poetry config pypi-token.pypi "${{ secrets.PYPI_TOKEN }}"
           poetry build
           poetry publish
