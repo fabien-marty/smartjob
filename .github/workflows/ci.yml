@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  push:
+  release:
+  pull_request:
+
+env:
+  POETRY_HOME: /opt/poetry
+
+jobs:
+
+  lint_and_test:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10
+      - name: Install poetry
+        run: |
+          python3 -m venv $POETRY_HOME
+          $POETRY_HOME/bin/pip install poetry
+      - name: Fix github path
+        run: |
+          echo "$POETRY_HOME/bin" >> "$GITHUB_PATH"
+      - name: Install requirements
+        run: |
+          poetry install
+      - name: Run lint
+        run: |
+          make lint
+      - name: Make docs
+        run: |
+          make doc
+      - name: Upload site as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+      - name: Checking for dirty files
+        run: |
+          make no-dirty
+      - name: Cleaning
+        run: |
+          make clean
+      - name: Checking for dirty files (again)
+        run: |
+          make no-dirty
+
+  publish_pypi:
+    runs-on: ubuntu-latest
+    needs: lint_and_test
+    if: github.event_name == 'release' && github.event.action == 'created'
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Install poetry
+        run: |
+          python3 -m venv $POETRY_HOME
+          $POETRY_HOME/bin/pip install poetry
+      - name: Fix github path
+        run: |
+          echo "$POETRY_HOME/bin" >> "$GITHUB_PATH"
+      - name: Install requirements
+        run: |
+          poetry install
+      - name: Publish on Pypi
+        run: |
+          poetry run invoke bump-version
+          poetry config pypi-token.pypi "${{ secrets.PYPI_TOKEN }}"
+          poetry build
+          poetry publish
