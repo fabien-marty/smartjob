@@ -1,6 +1,5 @@
 import asyncio
 import concurrent.futures
-import datetime
 import logging
 import shlex
 import sys
@@ -15,7 +14,11 @@ from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, Machine
 from stlog import getLogger
 
 from smartjob.app.executor import SmartJobExecutionResultFuture, SmartJobExecutorPort
-from smartjob.app.job import SmartJob, SmartJobExecutionResult, VertexSmartJob
+from smartjob.app.job import (
+    SmartJobExecution,
+    SmartJobExecutionResult,
+    VertexSmartJob,
+)
 
 aiplatform_mutex = Lock()
 aiplatform_initialized: bool = False
@@ -70,10 +73,11 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
     def init_aiplatform_if_needed(self):
         init_aiplatform()
 
-    def sync_run(self, job: VertexSmartJob) -> SmartJobExecutionResult:
+    def sync_run(self, execution: SmartJobExecution) -> SmartJobExecutionResult:
         self.init_aiplatform_if_needed()
+        job = typing.cast(VertexSmartJob, execution.job)
         customJob = VertexCustomJob(
-            display_name=f"{job.namespace}-{job.name}-{job.short_execution_id}",
+            display_name=f"{job.namespace}-{job.name}-{execution.short_id}",
             project=job.project,
             location=job.region,
             staging_bucket=job.staging_bucket,
@@ -82,10 +86,10 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                     replica_count=1,
                     container_spec=custom_job_v1.ContainerSpec(
                         image_uri=job.docker_image,
-                        args=job.overridden_args,
+                        args=execution.overridden_args,
                         env=[
                             EnvVar(name=k, value=v)
-                            for k, v in job.overridden_envs.items()
+                            for k, v in execution.overridden_envs.items()
                         ],
                     ),
                     machine_spec=MachineSpec(
@@ -102,11 +106,11 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
         )
         logger.info(
             "Let's trigger a new execution of Vertex Job: %s...",
-            f"{job.namespace}-{job.name}-{job.short_execution_id}",
+            f"{job.namespace}-{job.name}-{execution.short_id}",
             docker_image=job.docker_image,
-            overridden_args=shlex.join(job.overridden_args),
+            overridden_args=shlex.join(execution.overridden_args),
             overridden_envs=", ".join(
-                [f"{x}={y}" for x, y in job.overridden_envs.items()]
+                [f"{x}={y}" for x, y in execution.overridden_envs.items()]
             ),
         )
         try:
@@ -115,16 +119,13 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                 timeout=job.timeout_seconds,
                 service_account=job.service_account,
             )
-            job.log_url = customJob.get_log_url(job.project)
+            execution.log_url = customJob.get_log_url(job.project)
             customJob._block_until_complete()
         except RuntimeError:
             pass
-        return SmartJobExecutionResult(
-            job=job,
-            success=customJob.success,
-        )
+        return SmartJobExecutionResult.from_execution(execution, customJob.success)
 
-    # FIXME: we can do this better
+    # TODO: we can probably do this in a better way
     async def _wait(
         self, future: asyncio.Future[SmartJobExecutionResult]
     ) -> SmartJobExecutionResult:
@@ -133,12 +134,11 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                 return future.result()
             await asyncio.sleep(1)
 
-    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
-        if not job.created:
-            job.created = datetime.datetime.now(tz=datetime.timezone.utc)
-        if not job.execution_id:
-            job.set_execution_id()
-        castedJob = typing.cast(VertexSmartJob, job)
+    async def schedule(
+        self, execution: SmartJobExecution
+    ) -> SmartJobExecutionResultFuture:
         loop = asyncio.get_event_loop()
-        future = loop.run_in_executor(self.executor, self.sync_run, castedJob)
-        return VertexSmartJobExecutionResultFuture(self._wait(future), job=castedJob)
+        future = loop.run_in_executor(self.executor, self.sync_run, execution)
+        return VertexSmartJobExecutionResultFuture(
+            self._wait(future), execution=execution
+        )

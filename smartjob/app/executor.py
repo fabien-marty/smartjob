@@ -14,6 +14,7 @@ from smartjob.app.job import (
     DEFAULT_NAMESPACE,
     CloudRunSmartJob,
     SmartJob,
+    SmartJobExecution,
     SmartJobExecutionResult,
     VertexSmartJob,
 )
@@ -32,9 +33,9 @@ class SmartJobExecutionResultFuture(ABC):
     def __init__(
         self,
         coroutine: Coroutine,
-        job: SmartJob,
+        execution: SmartJobExecution,
     ):
-        self.job = job
+        self._execution: SmartJobExecution = execution
         self.__result: SmartJobExecutionResult | None = None
         self.__task = asyncio.create_task(coroutine)
         self.__task.add_done_callback(self._task_done)
@@ -63,6 +64,23 @@ class SmartJobExecutionResultFuture(ABC):
         """Return True if the job execution is done."""
         return self.__task.done()
 
+    @property
+    def execution_id(self) -> str:
+        "The execution unique identifier."
+        return self._execution.id
+
+    @property
+    def short_execution_id(self) -> str:
+        "The (shortened) execution id."
+        return self._execution.short_id
+
+    @property
+    def log_url(self) -> str:
+        "The execution log url."
+        if self._execution.log_url is None:
+            raise SmartJobException("the log_url property is not set")
+        return self._execution.log_url
+
     @abstractmethod
     def _get_result(self, task_result) -> SmartJobExecutionResult:
         pass
@@ -74,7 +92,7 @@ class SmartJobExecutionResultFuture(ABC):
     def _task_done(self, future: asyncio.Future):
         self.__result = self._get_result_from_future(future)
         self.__result.stopped = datetime.datetime.now(tz=datetime.timezone.utc)
-        if self.job.cancelled:
+        if self._execution.cancelled:
             return
         if self.__result.success:
             logger.info(
@@ -88,15 +106,10 @@ class SmartJobExecutionResultFuture(ABC):
                 duration_seconds=self.__result.duration_seconds,
             )
 
-    @property
-    def log_url(self) -> str | None:
-        """Return the URL to the logs of the job execution."""
-        return self.job.log_url
-
 
 class SmartJobExecutorPort(ABC):
     @abstractmethod
-    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
+    async def schedule(self, job: SmartJobExecution) -> SmartJobExecutionResultFuture:
         pass
 
 
@@ -123,7 +136,7 @@ class SmartJobExecutorService:
         default_factory=lambda: os.environ.get("SMARTJOB_OUTPUT_BUCKET_BASE_PATH", "")
     )
 
-    def _update_job_with_default_parameters(self, job: SmartJob):
+    def _update_job_with_default_parameters(self, job: SmartJob, execution_id: str):
         if not job.namespace:
             job.namespace = self.namespace
         if not job.project:
@@ -135,19 +148,17 @@ class SmartJobExecutorService:
         if not job.staging_bucket:
             job.staging_bucket = self.staging_bucket
         if self.input_bucket_base_path and not job.input_bucket_path:
-            job.set_auto_input_bucket_path(self.input_bucket_base_path)
+            job.set_auto_input_bucket_path(self.input_bucket_base_path, execution_id)
         if self.output_bucket_base_path and not job.output_bucket_path:
-            job.set_auto_output_bucket_path(self.output_bucket_base_path)
+            job.set_auto_output_bucket_path(self.output_bucket_base_path, execution_id)
 
-    def _update_job_with_input_output(self, job: SmartJob):
+    def _update_execution_env(self, execution: SmartJobExecution):
+        job = execution.job
         if job.input_bucket_path:
-            job.overridden_envs["INPUT_PATH"] = job.input_path
+            execution.overridden_envs["INPUT_PATH"] = job.input_path
         if job.output_bucket_path:
-            job.overridden_envs["OUTPUT_PATH"] = job.output_path
-
-    def _update_some_job_properties(self, job: SmartJob):
-        job.created = datetime.datetime.now(tz=datetime.timezone.utc)
-        job.set_execution_id()
+            execution.overridden_envs["OUTPUT_PATH"] = job.output_path
+        execution.overridden_envs["EXECUTION_ID"] = execution.id
 
     async def _create_input_output_paths_if_needed(self, job: SmartJob):
         coroutines: list[Coroutine] = []
@@ -177,8 +188,9 @@ class SmartJobExecutorService:
         logger.debug("Done creating input/output paths")
 
     async def _upload_python_script_if_needed_and_update_overridden_args(
-        self, job: SmartJob
+        self, execution: SmartJobExecution
     ):
+        job = execution.job
         if not job.python_script_path:
             return
         if not job.staging_bucket:
@@ -202,50 +214,65 @@ class SmartJobExecutorService:
             job.staging_bucket,
             destination_path,
         )
-        job.overridden_args = [
+        execution.overridden_args = [
             "python",
             f"{job.staging_mount_point}/{destination_path}",
         ] + job.overridden_args
 
-    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
+    async def schedule(
+        self,
+        job: SmartJob,
+        add_envs: dict[str, str] | None = None,
+    ) -> SmartJobExecutionResultFuture:
         """Schedule a job and return a kind of future.
 
         Arguments:
             job: The job to run.
+            add_envs: Environment variables to add for this particular execution.
 
         Returns:
             The result of the job execution as a kind of future.
 
         """
-        self._update_some_job_properties(job)
-        self._update_job_with_default_parameters(job)
-        self._update_job_with_input_output(job)
+        execution = SmartJobExecution(
+            job,
+            overridden_args=list(job.overridden_args),
+            overridden_envs={**job.overridden_envs, **(add_envs or {})},
+        )
+        self._update_job_with_default_parameters(job, execution_id=execution.id)
+        self._update_execution_env(execution)
         job.assert_is_ready()
         LogContext.reset_context()
         LogContext.add(
             job_name=job.name,
-            execution_short_id=job.short_execution_id,
             job_namespace=job.namespace,
             project=job.project,
             region=job.region,
+            short_execution_id=execution.short_id,
+            execution_id=execution.id,
         )
         logger.info("Starting a smartjob...")
         await self._create_input_output_paths_if_needed(job)
-        await self._upload_python_script_if_needed_and_update_overridden_args(job)
+        await self._upload_python_script_if_needed_and_update_overridden_args(execution)
         res: SmartJobExecutionResultFuture
         if isinstance(job, CloudRunSmartJob):
-            res = await self.cloudrun_executor_adapter.schedule(job)
+            res = await self.cloudrun_executor_adapter.schedule(execution)
         elif isinstance(job, VertexSmartJob):
-            res = await self.vertex_executor_adapter.schedule(job)
+            res = await self.vertex_executor_adapter.schedule(execution)
         else:
             raise SmartJobException("Unknown job type")
         return res
 
-    async def run(self, job: SmartJob) -> SmartJobExecutionResult:
+    async def run(
+        self,
+        job: SmartJob,
+        add_envs: dict[str, str] | None = None,
+    ) -> SmartJobExecutionResult:
         """Schedule a job and wait for its completion.
 
         Arguments:
             job: The job to run.
+            add_envs: Environment variables to add for this particular execution.
 
         Returns:
             The result of the job execution.

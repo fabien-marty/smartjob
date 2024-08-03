@@ -72,13 +72,13 @@ def cli_process(service: SmartJobExecutorService, job: SmartJob, wait: bool):
         else:
             print("FAILED in %i seconds" % (result.duration_seconds or -1))
             return_code = 2
-        print("Id:      %s" % result.job.execution_id)
-        print("ShortId: %s" % result.job.short_execution_id)
+        print("Id:      %s" % result.execution_id)
+        print("ShortId: %s" % result.short_execution_id)
         print("Logs:    %s" % result.log_url)
         sys.exit(return_code)
     else:
         future = asyncio.run(_schedule(service, job))
         print("SCHEDULED")
-        print("Id:      %s" % future.job.execution_id)
-        print("ShortId: %s" % future.job.short_execution_id)
+        print("Id:      %s" % future.execution_id)
+        print("ShortId: %s" % future.short_execution_id)
         print("Logs:    %s" % future.log_url)

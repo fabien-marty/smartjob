@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import shlex
 from dataclasses import dataclass
 from typing import cast
@@ -9,7 +8,11 @@ from google.cloud import run_v2
 from stlog import getLogger
 
 from smartjob.app.executor import SmartJobExecutionResultFuture, SmartJobExecutorPort
-from smartjob.app.job import CloudRunSmartJob, SmartJob, SmartJobExecutionResult
+from smartjob.app.job import (
+    CloudRunSmartJob,
+    SmartJobExecution,
+    SmartJobExecutionResult,
+)
 
 logger = getLogger("smartjob.executor.cloudrun")
 
@@ -30,20 +33,14 @@ class CloudRunSmartJobExecutionResultFuture(SmartJobExecutionResultFuture):
         except gac_exceptions.GoogleAPICallError:
             pass
         except asyncio.CancelledError:
-            self.job.cancelled = True
-        return SmartJobExecutionResult(
-            job=self.job,
-            success=False,
-        )
+            self._execution.cancelled = True
+        return SmartJobExecutionResult.from_execution(self._execution, False)
 
     def _get_result(self, task_result) -> SmartJobExecutionResult:
         success = False
         castedResult = cast(run_v2.Execution, task_result)
         success = castedResult.succeeded_count > 0
-        return SmartJobExecutionResult(
-            job=self.job,
-            success=success,
-        )
+        return SmartJobExecutionResult.from_execution(self._execution, success)
 
 
 class CloudRunSmartJobExecutor(SmartJobExecutorPort):
@@ -182,12 +179,10 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
             logger.debug("Done creating Cloud Run Job: %s", job.cloud_run_job_name)
             self.reset_job_list_cache(job.project, job.region)
 
-    async def schedule(self, job: SmartJob) -> SmartJobExecutionResultFuture:
-        if not job.created:
-            job.created = datetime.datetime.now(tz=datetime.timezone.utc)
-        if not job.execution_id:
-            job.set_execution_id()
-        job = cast(CloudRunSmartJob, job)
+    async def schedule(
+        self, execution: SmartJobExecution
+    ) -> SmartJobExecutionResultFuture:
+        job = cast(CloudRunSmartJob, execution.job)
         await self.create_job_if_needed(job)
         request = run_v2.RunJobRequest(
             name=job.full_cloud_run_job_name,
@@ -197,10 +192,10 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                 container_overrides=[
                     run_v2.RunJobRequest.Overrides.ContainerOverride(
                         name="container-1",
-                        args=job.overridden_args,
+                        args=execution.overridden_args,
                         env=[
                             run_v2.EnvVar(name=k, value=v)
-                            for k, v in job.overridden_envs.items()
+                            for k, v in execution.overridden_envs.items()
                         ],
                     )
                 ],
@@ -210,12 +205,14 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
             "Let's trigger a new execution of Cloud Run Job: %s...",
             job.cloud_run_job_name,
             docker_image=job.docker_image,
-            overridden_args=shlex.join(job.overridden_args),
+            overridden_args=shlex.join(execution.overridden_args),
             overridden_envs=", ".join(
-                [f"{x}={y}" for x, y in job.overridden_envs.items()]
+                [f"{x}={y}" for x, y in execution.overridden_envs.items()]
             ),
             timeout_s=job.timeout_seconds,
         )
         operation = await self.client.run_job(request=request)
-        job.log_url = operation.metadata.log_uri
-        return CloudRunSmartJobExecutionResultFuture(operation.result(), job=job)
+        execution.log_url = operation.metadata.log_uri
+        return CloudRunSmartJobExecutionResultFuture(
+            operation.result(), execution=execution
+        )

@@ -1,7 +1,7 @@
 import datetime
 import hashlib
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 from smartjob.app.exception import SmartJobException
 
@@ -65,23 +65,8 @@ class SmartJob:
     staging_bucket: str = ""
     input_bucket_path: str = ""
     output_bucket_path: str = ""
-    execution_id: str | None = None
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     service_account: str | None = None
-    created: datetime.datetime | None = field(default=None, init=False)
-    log_url: str | None = field(default=None, init=False)
-    cancelled: bool = field(default=False, init=False)
-
-    def set_execution_id(self):
-        """Set a random execution_id."""
-        self.execution_id = _unique_id()
-
-    @property
-    def short_execution_id(self) -> str:
-        """Return a short id."""
-        if self.execution_id is None:
-            raise SmartJobException("execution_id is not set")
-        return self.execution_id[:8]
 
     def assert_is_ready(self):
         """Test if the job is ready to be run.
@@ -199,19 +184,19 @@ class SmartJob:
         """Return the full name of the job (namespace + name)."""
         return f"{self.namespace}-{self.name}"
 
-    def set_auto_input_bucket_path(self, input_bucket_base_path: str):
+    def set_auto_input_bucket_path(
+        self, input_bucket_base_path: str, execution_id: str
+    ):
         if not input_bucket_base_path.startswith("gs://"):
             raise SmartJobException("input_bucket_base_path must start with gs://")
-        if not self.execution_id:
-            raise SmartJobException("execution_id is not set")
-        self.input_bucket_path = f"{input_bucket_base_path}/{self.full_name}/{self.execution_id[0:2]}/{self.execution_id}/input"
+        self.input_bucket_path = f"{input_bucket_base_path}/{self.full_name}/{execution_id[0:2]}/{execution_id}/input"
 
-    def set_auto_output_bucket_path(self, output_bucket_base_path: str):
+    def set_auto_output_bucket_path(
+        self, output_bucket_base_path: str, execution_id: str
+    ):
         if not output_bucket_base_path.startswith("gs://"):
             raise SmartJobException("output_bucket_base_path must start with gs://")
-        if not self.execution_id:
-            raise SmartJobException("execution_id is not set")
-        self.output_bucket_path = f"{output_bucket_base_path}/{self.full_name}/{self.execution_id[0:2]}/{self.execution_id}/output"
+        self.output_bucket_path = f"{output_bucket_base_path}/{self.full_name}/{execution_id[0:2]}/{execution_id}/output"
 
 
 @dataclass
@@ -311,25 +296,50 @@ class VertexSmartJob(SmartJob):
             raise SmartJobException("staging_bucket is required for vertex jobs")
 
 
+@dataclass
+class SmartJobExecution:
+    job: SmartJob
+    id: str = field(default_factory=_unique_id)
+    created: datetime.datetime = field(
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc),
+        init=False,
+    )
+    log_url: str | None = field(default=None, init=False)
+    cancelled: bool = field(default=False, init=False)
+    overridden_envs: dict[str, str] = field(default_factory=dict)
+    overridden_args: list[str] = field(default_factory=list)
+
+    @property
+    def short_id(self) -> str:
+        """Return a short id."""
+        if self.id is None:
+            raise SmartJobException("execution_id is not set")
+        return self.id[:8]
+
+
+@dataclass
 class SmartJobExecutionResult:
     """SmartJobExecutionResult is the (final) result of a job execution.
 
     Attributes:
-        job: The executed job.
         success: Whether the job has succeeded or not.
+        created: The datetime when the job has started.
         stopped: The datetime when the job has stopped.
+        execution_id: The execution id of the job.
+        short_execution_id: The short execution id of the job.
+        job_name: The name of the job.
+        job_namespace: The namespace of the job.
 
     """
 
-    def __init__(
-        self,
-        job: SmartJob,
-        success: bool | None = None,
-        stopped: datetime.datetime | None = None,
-    ):
-        self.job: SmartJob = job
-        self.success: bool | None = success
-        self.stopped: datetime.datetime | None = stopped
+    success: bool
+    created: datetime.datetime
+    execution_id: str
+    short_execution_id: str
+    job_name: str
+    job_namespace: str
+    log_url: str
+    stopped: datetime.datetime
 
     def __bool__(self) -> bool:
         return self.success or False
@@ -337,11 +347,9 @@ class SmartJobExecutionResult:
     def __str__(self) -> str:
         if self.success:
             state = "SUCCESS"
-        elif self.success is False:
-            state = "FAILURE"
         else:
-            state = "UNKNOWN"
-        return f"SmartJobExecutionResult(short_execution_id={self.job.short_execution_id}, job_name={self.job.name}, job_namespace={self.job.namespace}): {state} in {self.duration_seconds or -1} seconds"
+            state = "FAILURE"
+        return f"SmartJobExecutionResult(short_execution_id={self.short_execution_id}, job_name={self.job_name}, job_namespace={self.job_namespace}): {state} in {self.duration_seconds or -1} seconds"
 
     def asdict(self) -> dict:
         """Return this object as a dictionary."""
@@ -349,27 +357,32 @@ class SmartJobExecutionResult:
             "success": self.success,
             "created": self.created,
             "stopped": self.stopped,
+            "execution_id": self.execution_id,
+            "short_execution_id": self.short_execution_id,
+            "job_name": self.job_name,
+            "job_namespace": self.job_namespace,
             "duration_seconds": self.duration_seconds,
-            "job": asdict(self.job),
         }
 
     @property
     def duration_seconds(self) -> int | None:
         """The duration of the job in seconds."""
-        if self.stopped is None:
-            return None
         return (self.stopped - self.created).seconds
 
-    @property
-    def created(self) -> datetime.datetime:
-        """The datetime when the job has started."""
-        if not self.job.created:
-            raise SmartJobException("created is not set")
-        return self.job.created
-
-    @property
-    def log_url(self) -> str:
-        """The log url of the job."""
-        if not self.job.log_url:
-            raise SmartJobException("log_url is not set")
-        return self.job.log_url
+    @classmethod
+    def from_execution(
+        cls, execution: SmartJobExecution, success: bool
+    ) -> "SmartJobExecutionResult":
+        """Create a SmartJobExecutionResult from a SmartJobExecution."""
+        if not execution.log_url:
+            raise SmartJobException("log_url is required")
+        return cls(
+            created=execution.created,
+            execution_id=execution.id,
+            short_execution_id=execution.short_id,
+            job_name=execution.job.name,
+            job_namespace=execution.job.namespace,
+            log_url=execution.log_url,
+            success=success,
+            stopped=datetime.datetime.now(tz=datetime.timezone.utc),
+        )
