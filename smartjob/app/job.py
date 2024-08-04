@@ -66,16 +66,7 @@ class SmartJob:
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     service_account: str | None = None
 
-    def assert_is_ready(self):
-        """Test if the job is ready to be run.
-
-        It raises an exception if the job is not ready to be run.
-        If it's ok, it does nothing.
-
-        Raises:
-            SmartJobException: If the job is not ready to be run.
-
-        """
+    def _assert_is_ready(self):
         if not self.name:
             raise SmartJobException("name is required for job")
         if not self.project:
@@ -93,17 +84,6 @@ class SmartJob:
                 "staging_bucket name must not contain / (except for the the gs:// prefix)"
             )
 
-    def python_script_hash(self) -> str:
-        """Return the hash of the python script.
-
-        If the python_script_path is not set, it returns an empty string.
-
-        """
-        if not self.python_script_path:
-            return ""
-        with open(self.python_script_path) as f:
-            return hashlib.sha1(f.read().encode()).hexdigest()
-
     @property
     def staging_bucket_name(self) -> str:
         """Return the name of the staging bucket without the gs:// prefix.
@@ -116,7 +96,7 @@ class SmartJob:
         return self.staging_bucket[5:]  # let's remove gs:// prefix
 
     @property
-    def staging_mount_point(self) -> str:
+    def _staging_mount_point(self) -> str:
         """Return the mount point for the staging bucket."""
         raise NotImplementedError("mount_point must be implemented in subclasses")
 
@@ -135,7 +115,7 @@ class CloudRunSmartJob(SmartJob):
     memory_gb: float = 0.5
 
     @property
-    def job_hash(self) -> str:
+    def _job_hash(self) -> str:
         """Return a short stable job_hash.
 
         If the job_hash is the same, we don't have to create a new CloudRunJob instance
@@ -151,14 +131,14 @@ class CloudRunSmartJob(SmartJob):
         return f"projects/{self.project}/locations/{self.region}"
 
     @property
-    def cloud_run_job_name(self) -> str:
+    def _cloud_run_job_name(self) -> str:
         """Return the cloud run job name."""
-        return f"{self.namespace}-{self.name}-{self.job_hash}"
+        return f"{self.namespace}-{self.name}-{self._job_hash}"
 
     @property
-    def full_cloud_run_job_name(self) -> str:
+    def _full_cloud_run_job_name(self) -> str:
         """Return the full cloud run job name."""
-        return f"{self._parent_name}/jobs/{self.cloud_run_job_name}"
+        return f"{self._parent_name}/jobs/{self._cloud_run_job_name}"
 
     @property
     def _cpuLimit(self) -> str:
@@ -169,7 +149,7 @@ class CloudRunSmartJob(SmartJob):
         return "%f" % self.memory_gb + "Gi"
 
     @property
-    def staging_mount_point(self) -> str:
+    def _staging_mount_point(self) -> str:
         """Return the mount point for the staging bucket."""
         return "/staging"
 
@@ -183,11 +163,11 @@ class VertexSmartJob(SmartJob):
     boot_disk_size_gb: int = 100
 
     @property
-    def staging_mount_point(self) -> str:
+    def _staging_mount_point(self) -> str:
         """Return the mount point for the staging bucket."""
         return f"/gcs/{self.staging_bucket_name}"
 
-    def assert_is_ready(self):
+    def _assert_is_ready(self):
         """Test if the job is ready to be run.
 
         It raises an exception if the job is not ready to be run.
@@ -197,7 +177,7 @@ class VertexSmartJob(SmartJob):
             SmartJobException: If the job is not ready to be run.
 
         """
-        super().assert_is_ready()
+        super()._assert_is_ready()
         if not self.staging_bucket:
             raise SmartJobException("staging_bucket is required for vertex jobs")
 
@@ -231,11 +211,11 @@ class SmartJobExecution:
 
     @property
     def input_path(self) -> str:
-        return f"{self.job.staging_mount_point}/{self._input_path}"
+        return f"{self.job._staging_mount_point}/{self._input_path}"
 
     @property
     def output_path(self) -> str:
-        return f"{self.job.staging_mount_point}/{self._output_path}"
+        return f"{self.job._staging_mount_point}/{self._output_path}"
 
     @property
     def full_input_path(self) -> str:
@@ -287,20 +267,6 @@ class SmartJobExecutionResult:
     state={state}, duration_seconds={self.duration_seconds},
     log_url={self.log_url},
 )"""
-
-    def asdict(self) -> dict:
-        """Return this object as a dictionary."""
-        return {
-            "success": self.success,
-            "created": self.created,
-            "stopped": self.stopped,
-            "execution_id": self.execution_id,
-            "job_name": self.job_name,
-            "job_namespace": self.job_namespace,
-            "duration_seconds": self.duration_seconds,
-            "full_input_path": self.full_input_path,
-            "full_output_path": self.full_output_path,
-        }
 
     @property
     def duration_seconds(self) -> int:

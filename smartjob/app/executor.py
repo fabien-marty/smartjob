@@ -193,7 +193,7 @@ class SmartJobExecutorService:
         )
         execution.overridden_args = [
             "python",
-            f"{job.staging_mount_point}/{destination_path}",
+            f"{job._staging_mount_point}/{destination_path}",
         ]
 
     async def schedule(
@@ -218,7 +218,7 @@ class SmartJobExecutorService:
         )
         self._update_job_with_default_parameters(job, execution_id=execution.id)
         self._update_execution_env(execution)
-        job.assert_is_ready()
+        job._assert_is_ready()
         LogContext.reset_context()
         LogContext.add(
             job_name=job.name,

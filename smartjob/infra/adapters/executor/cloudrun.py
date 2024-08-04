@@ -87,11 +87,11 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
     async def create_job_if_needed(self, job: CloudRunSmartJob):
         async with self.client_cache_lock:
             job_list_cache = await self.get_job_list_cache(job.project, job.region)
-            if job.full_cloud_run_job_name in job_list_cache:
+            if job._full_cloud_run_job_name in job_list_cache:
                 # it already exists
                 logger.debug(
                     "Cloud Run Job: %s already exists => great!",
-                    job.full_cloud_run_job_name,
+                    job._full_cloud_run_job_name,
                 )
                 return
             # it does not exist => let's create it
@@ -113,7 +113,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                 launch_stage = "BETA"
             request = run_v2.CreateJobRequest(
                 parent=job._parent_name,
-                job_id=job.cloud_run_job_name,
+                job_id=job._cloud_run_job_name,
                 job=run_v2.Job(
                     labels={
                         "smartjob": "true",
@@ -148,11 +148,11 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                 ),
             )
             logger.info(
-                "Let's create a new Cloud Run Job: %s...", job.cloud_run_job_name
+                "Let's create a new Cloud Run Job: %s...", job._cloud_run_job_name
             )
             operation = await self.client.create_job(request=request)
             await operation.result()
-            logger.debug("Done creating Cloud Run Job: %s", job.cloud_run_job_name)
+            logger.debug("Done creating Cloud Run Job: %s", job._cloud_run_job_name)
             self.reset_job_list_cache(job.project, job.region)
 
     async def schedule(
@@ -161,7 +161,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
         job = cast(CloudRunSmartJob, execution.job)
         await self.create_job_if_needed(job)
         request = run_v2.RunJobRequest(
-            name=job.full_cloud_run_job_name,
+            name=job._full_cloud_run_job_name,
             overrides=run_v2.RunJobRequest.Overrides(
                 task_count=1,
                 # timeout=job.timeout_seconds,
@@ -179,7 +179,7 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
         )
         logger.info(
             "Let's trigger a new execution of Cloud Run Job: %s...",
-            job.cloud_run_job_name,
+            job._cloud_run_job_name,
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
             add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
