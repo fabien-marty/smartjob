@@ -63,9 +63,16 @@ class SmartJob:
     """
 
     python_script_path: str = ""
+    """Local path to a python script to execute in the container."""
+
     staging_bucket: str = ""
+    """Staging bucket (for input, output and/or loading python_script_path."""
+
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    """"Timeout in seconds for the job execution."""
+
     service_account: str | None = None
+    """Service account (email) to use for the job execution."""
 
     def _assert_is_ready(self):
         if not self.name:
@@ -109,11 +116,11 @@ class SmartJob:
 
 @dataclass
 class CloudRunSmartJob(SmartJob):
-    # cpu is the number of requested CPUs.
     cpu: float = 1
+    """Number of requested CPUs."""
 
-    # memory_gb is the requested memory in Gb.
     memory_gb: float = 0.5
+    """Memory in Gb."""
 
     @property
     def _job_hash(self) -> str:
@@ -158,10 +165,19 @@ class CloudRunSmartJob(SmartJob):
 @dataclass
 class VertexSmartJob(SmartJob):
     machine_type: str = "n1-standard-4"
+    """Machine type."""
+
     accelerator_type: str = "ACCELERATOR_TYPE_UNSPECIFIED"
+    """Accelerator type."""
+
     accelerator_count: int = 0
+    """Number of accelerators."""
+
     boot_disk_type: str = "pd-ssd"
+    """Boot disk type."""
+
     boot_disk_size_gb: int = 100
+    """Boot disk size in Gb."""
 
     @property
     def _staging_mount_point(self) -> str:
