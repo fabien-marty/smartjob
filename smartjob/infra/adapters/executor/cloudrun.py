@@ -10,8 +10,8 @@ from stlog import getLogger
 from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
 from smartjob.app.job import (
     CloudRunSmartJob,
-    SmartJobExecution,
-    SmartJobExecutionResult,
+    Execution,
+    ExecutionResult,
 )
 
 logger = getLogger("smartjob.executor.cloudrun")
@@ -24,20 +24,18 @@ class JobListCacheKey:
 
 
 class CloudRunExecutionResultFuture(ExecutionResultFuture):
-    def _get_result_from_future(
-        self, future: asyncio.Future
-    ) -> SmartJobExecutionResult:
+    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         try:
             task_result = future.result()
             success = False
             castedResult = cast(run_v2.Execution, task_result)
             success = castedResult.succeeded_count > 0
-            return SmartJobExecutionResult.from_execution(self._execution, success)
+            return ExecutionResult.from_execution(self._execution, success)
         except gac_exceptions.GoogleAPICallError:
             pass
         except asyncio.CancelledError:
             self._execution.cancelled = True
-        return SmartJobExecutionResult.from_execution(self._execution, False)
+        return ExecutionResult.from_execution(self._execution, False)
 
 
 class CloudRunExecutor(ExecutorPort):
@@ -152,7 +150,7 @@ class CloudRunExecutor(ExecutorPort):
             logger.debug("Done creating Cloud Run Job: %s", job._cloud_run_job_name)
             self.reset_job_list_cache(job.project, job.region)
 
-    async def schedule(self, execution: SmartJobExecution) -> ExecutionResultFuture:
+    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         job = cast(CloudRunSmartJob, execution.job)
         await self.create_job_if_needed(job)
         request = run_v2.RunJobRequest(

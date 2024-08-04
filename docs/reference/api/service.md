@@ -1,34 +1,34 @@
 # SmartJob Executor Service
 
-To get a [smartjob.SmartJobExecutorService][] use the function [smartjob.get_smart_job_executor_service_singleton][].
+To get a [smartjob.ExecutorService][] use the function [smartjob.get_executor_service_singleton][].
 
-Then you can use the two methods on [smartjob.SmartJobExecutorService][] to execute [smartjob.SmartJob][] jobs.
+Then you can use the two methods on [smartjob.ExecutorService][] to execute [smartjob.SmartJob][] jobs.
 
-These methods will return a [smartjob.SmartJobExecutionResult][] object (when the job is fully executed) or a [smartjob.SmartJobExecutionResultFuture][]  (a kind of future on the job result).
+These methods will return a [smartjob.ExecutionResult][] object (when the job is fully executed) or a [smartjob.ExecutionResultFuture][]  (a kind of future on the job result).
 
 ## Getting the executor service
 
-::: smartjob.get_smart_job_executor_service_singleton
+::: smartjob.get_executor_service_singleton
     options:
       show_root_heading: true
       heading_level: 3
       show_signature: false
 
-## SmartJobExecutorService object
+## ExecutorService object
 
-::: smartjob.SmartJobExecutorService
+::: smartjob.ExecutorService
     options:
       show_root_heading: true
       heading_level: 3
 
 ## ExecutionResult classes
 
-::: smartjob.SmartJobExecutionResult
+::: smartjob.ExecutionResult
     options:
       show_root_heading: true
       heading_level: 3
 
-::: smartjob.SmartJobExecutionResultFuture
+::: smartjob.ExecutionResultFuture
     options:
       show_root_heading: true
       heading_level: 3

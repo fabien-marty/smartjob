@@ -15,8 +15,8 @@ from stlog import getLogger
 
 from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
 from smartjob.app.job import (
-    SmartJobExecution,
-    SmartJobExecutionResult,
+    Execution,
+    ExecutionResult,
     VertexSmartJob,
 )
 
@@ -59,9 +59,7 @@ class VertexCustomJob(aiplatform.CustomJob):
 
 
 class VertexExecutionResultFuture(ExecutionResultFuture):
-    def _get_result_from_future(
-        self, future: asyncio.Future
-    ) -> SmartJobExecutionResult:
+    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         return future.result()
 
 
@@ -72,7 +70,7 @@ class VertexExecutor(ExecutorPort):
     def init_aiplatform_if_needed(self):
         init_aiplatform()
 
-    def sync_run(self, execution: SmartJobExecution) -> SmartJobExecutionResult:
+    def sync_run(self, execution: Execution) -> ExecutionResult:
         self.init_aiplatform_if_needed()
         job = typing.cast(VertexSmartJob, execution.job)
         customJob = VertexCustomJob(
@@ -120,18 +118,16 @@ class VertexExecutor(ExecutorPort):
             customJob._block_until_complete()
         except RuntimeError:
             pass
-        return SmartJobExecutionResult.from_execution(execution, customJob.success)
+        return ExecutionResult.from_execution(execution, customJob.success)
 
     # TODO: we can probably do this in a better way
-    async def _wait(
-        self, future: asyncio.Future[SmartJobExecutionResult]
-    ) -> SmartJobExecutionResult:
+    async def _wait(self, future: asyncio.Future[ExecutionResult]) -> ExecutionResult:
         while True:
             if future.done():
                 return future.result()
             await asyncio.sleep(1)
 
-    async def schedule(self, execution: SmartJobExecution) -> ExecutionResultFuture:
+    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         loop = asyncio.get_event_loop()
         future = loop.run_in_executor(self.executor, self.sync_run, execution)
         return VertexExecutionResultFuture(self._wait(future), execution=execution)

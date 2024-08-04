@@ -12,9 +12,9 @@ from smartjob.app.input import Input
 from smartjob.app.job import (
     DEFAULT_NAMESPACE,
     CloudRunSmartJob,
+    Execution,
+    ExecutionResult,
     SmartJob,
-    SmartJobExecution,
-    SmartJobExecutionResult,
     VertexSmartJob,
 )
 from smartjob.app.storage import StoragePort
@@ -33,10 +33,10 @@ class ExecutionResultFuture(ABC):
     def __init__(
         self,
         coroutine: Coroutine,
-        execution: SmartJobExecution,
+        execution: Execution,
     ):
-        self._execution: SmartJobExecution = execution
-        self.__result: SmartJobExecutionResult | None = None
+        self._execution: Execution = execution
+        self.__result: ExecutionResult | None = None
         self.__task = asyncio.create_task(coroutine)
         self.__task.add_done_callback(self._task_done)
         self._storage_adapter: StoragePort | None = None
@@ -60,7 +60,7 @@ class ExecutionResultFuture(ABC):
             logger.warning("smartjob.json is not a valid json")
             return None
 
-    async def result(self) -> SmartJobExecutionResult:
+    async def result(self) -> ExecutionResult:
         """Wait and return the result of the job execution.
 
         This is a coroutine. You have to wait for it to complete with (for example):
@@ -99,9 +99,7 @@ class ExecutionResultFuture(ABC):
         return self._execution.log_url
 
     @abstractmethod
-    def _get_result_from_future(
-        self, future: asyncio.Future
-    ) -> SmartJobExecutionResult:
+    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         pass
 
     def _task_done(self, future: asyncio.Future):
@@ -123,7 +121,7 @@ class ExecutionResultFuture(ABC):
 
 class ExecutorPort(ABC):
     @abstractmethod
-    async def schedule(self, job: SmartJobExecution) -> ExecutionResultFuture:
+    async def schedule(self, job: Execution) -> ExecutionResultFuture:
         pass
 
 
@@ -156,12 +154,12 @@ class ExecutorService:
         if not job.staging_bucket:
             job.staging_bucket = self.staging_bucket
 
-    def _update_execution_env(self, execution: SmartJobExecution):
+    def _update_execution_env(self, execution: Execution):
         execution.add_envs["INPUT_PATH"] = execution.input_path
         execution.add_envs["OUTPUT_PATH"] = execution.output_path
         execution.add_envs["EXECUTION_ID"] = execution.id
 
-    async def _create_input_output_paths_if_needed(self, execution: SmartJobExecution):
+    async def _create_input_output_paths_if_needed(self, execution: Execution):
         job = execution.job
         coroutines: list[Coroutine] = []
         logger.info(
@@ -188,7 +186,7 @@ class ExecutorService:
         logger.debug("Done creating input/output paths")
 
     async def _upload_python_script_if_needed_and_update_overridden_args(
-        self, execution: SmartJobExecution
+        self, execution: Execution
     ):
         job = execution.job
         if not job.python_script_path:
@@ -216,7 +214,7 @@ class ExecutorService:
             f"{job._staging_mount_point}/{destination_path}",
         ]
 
-    async def _upload_inputs(self, execution: SmartJobExecution, inputs: list[Input]):
+    async def _upload_inputs(self, execution: Execution, inputs: list[Input]):
         await asyncio.gather(
             *[
                 input._create(
@@ -244,7 +242,7 @@ class ExecutorService:
             The result of the job execution as a kind of future.
 
         """
-        execution = SmartJobExecution(
+        execution = Execution(
             job,
             overridden_args=list(job.overridden_args),
             add_envs={**job.add_envs, **(add_envs or {})},
@@ -278,7 +276,7 @@ class ExecutorService:
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
-    ) -> SmartJobExecutionResult:
+    ) -> ExecutionResult:
         """Schedule a job and wait for its completion.
 
         Arguments:
@@ -294,7 +292,7 @@ class ExecutorService:
 
     def sync_run(
         self, job: SmartJob, add_envs: dict[str, str] | None = None
-    ) -> SmartJobExecutionResult:
+    ) -> ExecutionResult:
         return asyncio.run(self.run(job, add_envs))
 
     def sync_schedule(

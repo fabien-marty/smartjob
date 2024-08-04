@@ -34,13 +34,13 @@ class SmartJob:
     project: str = ""
     """GCP project to use for executing the job.
 
-    If not set here, the value will be forced by the SmartJobExecutorService object.
+    If not set here, the value will be forced by the ExecutorService object.
     """
 
     region: str = ""
     """GCP region where to execute the job.
 
-    If not set here, the value will be forced by the SmartJobExecutorService object.
+    If not set here, the value will be forced by the ExecutorService object.
     """
 
     docker_image: str = ""
@@ -184,7 +184,7 @@ class VertexSmartJob(SmartJob):
 
 
 @dataclass
-class SmartJobExecution:
+class Execution:
     job: SmartJob
     id: str = field(default_factory=_unique_id)
     created: datetime.datetime = field(
@@ -228,8 +228,8 @@ class SmartJobExecution:
 
 
 @dataclass
-class SmartJobExecutionResult:
-    """SmartJobExecutionResult is the (final) result of a job execution.
+class ExecutionResult:
+    """ExecutionResult is the (final) result of a job execution.
 
     Attributes:
         success: Whether the job has succeeded or not.
@@ -268,7 +268,7 @@ class SmartJobExecutionResult:
             json_output = json.dumps(self.json_output, indent=4)
         else:
             json_output = "None"
-        res = f"""SmartJobExecutionResult(
+        res = f"""ExecutionResult(
     job_name={self.job_name}, job_namespace={self.job_namespace},
     execution_id={self.execution_id},
     state={state}, duration_seconds={self.duration_seconds},
@@ -285,10 +285,10 @@ class SmartJobExecutionResult:
     @classmethod
     def from_execution(
         cls,
-        execution: SmartJobExecution,
+        execution: Execution,
         success: bool,
-    ) -> "SmartJobExecutionResult":
-        """Create a SmartJobExecutionResult from a SmartJobExecution."""
+    ) -> "ExecutionResult":
+        """Create a ExecutionResult from a SmartJobExecution."""
         if not execution.log_url:
             raise SmartJobException("log_url is required")
         return cls(

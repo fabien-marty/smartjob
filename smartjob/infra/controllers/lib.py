@@ -18,11 +18,11 @@ def get_executor_service_singleton(
     staging_bucket: str | None = None,
     docker_image: str | None = None,
 ) -> ExecutorService:
-    """Return a singleton instance of SmartJobExecutorService (initialized on first call with given arguments).
+    """Return a singleton instance of ExecutorService (initialized on first call with given arguments).
 
     Most of the arguments are optional and can also be set via environment variables or at SmartJob level.
 
-    See SmartJobExecutorService or SmartJob for more details on the arguments.
+    See ExecutorService or SmartJob for more details on the arguments.
 
     Args:
         max_workers: Maximum number of workers for the vertex executor and for the file uploader.
@@ -33,7 +33,7 @@ def get_executor_service_singleton(
         docker_image: Default docker image to use.
 
     Returns:
-        Instance of SmartJobExecutorService.
+        Instance of ExecutorService.
 
     """
     global __singleton

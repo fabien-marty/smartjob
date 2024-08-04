@@ -17,7 +17,7 @@ result = job_executor_service.sync_run(job)
 
 # Let's print the execution result
 # => it will print something like:
-# SmartJobExecutionResult(
+# ExecutionResult(
 #     job_name=foo, job_namespace=default,
 #     execution_id=ce5dc480b392434a833a7dbbfae8dcd9,
 #     state=SUCCESS, duration_seconds=14,

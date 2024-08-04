@@ -8,8 +8,8 @@ from smartjob.app.input import (
 )
 from smartjob.app.job import (
     CloudRunSmartJob,
+    ExecutionResult,
     SmartJob,
-    SmartJobExecutionResult,
     VertexSmartJob,
 )
 from smartjob.infra.controllers.lib import get_executor_service_singleton
@@ -20,7 +20,7 @@ __all__ = [
     "CloudRunSmartJob",
     "SmartJob",
     "ExecutorService",
-    "SmartJobExecutionResult",
+    "ExecutionResult",
     "ExecutionResultFuture",
     "VertexSmartJob",
     "Input",
