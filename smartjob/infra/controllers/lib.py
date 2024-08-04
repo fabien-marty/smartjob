@@ -17,8 +17,6 @@ def get_smart_job_executor_service_singleton(
     region: str | None = None,
     staging_bucket: str | None = None,
     docker_image: str | None = None,
-    input_bucket_base_path: str | None = None,
-    output_bucket_base_path: str | None = None,
 ) -> SmartJobExecutorService:
     """Return a singleton instance of SmartJobExecutorService (initialized on first call with given arguments).
 
@@ -31,10 +29,8 @@ def get_smart_job_executor_service_singleton(
         namespace: Default namespace to use.
         project: Default project to use.
         region: Default region to use.
-        staging_bucket: Default staging bucket to use.
+        staging_bucket: Default staging bucket to use (for input/output/local script uploading)
         docker_image: Default docker image to use.
-        input_bucket_base_path: Default input bucket base path to use.
-        output_bucket_base_path: Default output bucket base path to use.
 
     Returns:
         Instance of SmartJobExecutorService.
@@ -43,10 +39,6 @@ def get_smart_job_executor_service_singleton(
     global __singleton
     if __singleton is None:
         kwargs: dict[str, Any] = {}
-        if input_bucket_base_path:
-            kwargs["input_bucket_base_path"] = input_bucket_base_path
-        if output_bucket_base_path:
-            kwargs["output_bucket_base_path"] = output_bucket_base_path
         if docker_image:
             kwargs["docker_image"] = docker_image
         if staging_bucket:

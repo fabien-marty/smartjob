@@ -2,7 +2,7 @@
 name = "smartjob"
 version = "0.0.1"
 description = "Little async python library for dealing with GCP/Cloud Run Jobs and GCP/VertexAI CustomJobs"
-authors = ["Fabien MARTY <fabien.marty@botify.com>"]
+authors = ["Fabien MARTY <fab@fabien-marty.dev>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]

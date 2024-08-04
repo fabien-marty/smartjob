@@ -1,11 +1,10 @@
-import asyncio
 import sys
 
 import typer
 from stlog import setup
 
-from smartjob.app.executor import SmartJobExecutionResultFuture, SmartJobExecutorService
-from smartjob.app.job import SmartJob, SmartJobExecutionResult
+from smartjob.app.executor import SmartJobExecutorService
+from smartjob.app.job import SmartJob
 from smartjob.infra.controllers.lib import get_smart_job_executor_service_singleton
 
 
@@ -28,9 +27,9 @@ OverrideCommandArgument = typer.Option(
     "",
     help="Override docker image command and arguments",
 )
-OverrideEnvArgument = typer.Option(
+AddEnvArgument = typer.Option(
     [],
-    help="Override docker image env vars (key=value, can be used multiple times)",
+    help="Add a new env var in the container environment (format: key=value, can be used multiple times)",
 )
 StagingBucketArgument = typer.Option(
     None,
@@ -51,21 +50,19 @@ PythonScriptPathArgument = typer.Option(
 WaitArgument = typer.Option(True, help="Wait for the job to finish")
 
 
-async def _run(
-    service: SmartJobExecutorService, job: SmartJob
-) -> SmartJobExecutionResult:
-    return await service.run(job)
-
-
-async def _schedule(
-    service: SmartJobExecutorService, job: SmartJob
-) -> SmartJobExecutionResultFuture:
-    return await service.schedule(job)
+def add_env_argument_to_dict(add_env: list[str]) -> dict[str, str]:
+    add_envs: dict[str, str] = {}
+    for ae in add_env:
+        if "=" not in ae:
+            raise ValueError(f"Invalid env var format: {ae} => must be key=value")
+        key, value = ae.split("=", 1)
+        add_envs[key] = value
+    return add_envs
 
 
 def cli_process(service: SmartJobExecutorService, job: SmartJob, wait: bool):
     if wait:
-        result = asyncio.run(_run(service, job))
+        result = service.sync_run(job)
         return_code = 0
         if result:
             print("SUCCESS in %i seconds" % (result.duration_seconds or -1))
@@ -73,12 +70,10 @@ def cli_process(service: SmartJobExecutorService, job: SmartJob, wait: bool):
             print("FAILED in %i seconds" % (result.duration_seconds or -1))
             return_code = 2
         print("Id:      %s" % result.execution_id)
-        print("ShortId: %s" % result.short_execution_id)
         print("Logs:    %s" % result.log_url)
         sys.exit(return_code)
     else:
-        future = asyncio.run(_schedule(service, job))
+        future = service.sync_schedule(job)
         print("SCHEDULED")
         print("Id:      %s" % future.execution_id)
-        print("ShortId: %s" % future.short_execution_id)
         print("Logs:    %s" % future.log_url)

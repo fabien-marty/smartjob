@@ -77,7 +77,7 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
         self.init_aiplatform_if_needed()
         job = typing.cast(VertexSmartJob, execution.job)
         customJob = VertexCustomJob(
-            display_name=f"{job.namespace}-{job.name}-{execution.short_id}",
+            display_name=f"{job.namespace}-{job.name}-{execution.id}",
             project=job.project,
             location=job.region,
             staging_bucket=job.staging_bucket,
@@ -106,7 +106,7 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
         )
         logger.info(
             "Let's trigger a new execution of Vertex Job: %s...",
-            f"{job.namespace}-{job.name}-{execution.short_id}",
+            f"{job.namespace}-{job.name}-{execution.id}",
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
             add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),

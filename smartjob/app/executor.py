@@ -1,6 +1,5 @@
 import asyncio
 import datetime
-import hashlib
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -70,11 +69,6 @@ class SmartJobExecutionResultFuture(ABC):
         return self._execution.id
 
     @property
-    def short_execution_id(self) -> str:
-        "The (shortened) execution id."
-        return self._execution.short_id
-
-    @property
     def log_url(self) -> str:
         "The execution log url."
         if self._execution.log_url is None:
@@ -129,12 +123,6 @@ class SmartJobExecutorService:
     staging_bucket: str = field(
         default_factory=lambda: os.environ.get("SMARTJOB_STAGING_BUCKET", "")
     )
-    input_bucket_base_path: str = field(
-        default_factory=lambda: os.environ.get("SMARTJOB_INPUT_BUCKET_BASE_PATH", "")
-    )
-    output_bucket_base_path: str = field(
-        default_factory=lambda: os.environ.get("SMARTJOB_OUTPUT_BUCKET_BASE_PATH", "")
-    )
 
     def _update_job_with_default_parameters(self, job: SmartJob, execution_id: str):
         if not job.namespace:
@@ -147,43 +135,35 @@ class SmartJobExecutorService:
             job.docker_image = self.docker_image
         if not job.staging_bucket:
             job.staging_bucket = self.staging_bucket
-        if self.input_bucket_base_path and not job.input_bucket_path:
-            job.set_auto_input_bucket_path(self.input_bucket_base_path, execution_id)
-        if self.output_bucket_base_path and not job.output_bucket_path:
-            job.set_auto_output_bucket_path(self.output_bucket_base_path, execution_id)
 
     def _update_execution_env(self, execution: SmartJobExecution):
-        job = execution.job
-        if job.input_bucket_path:
-            execution.add_envs["INPUT_PATH"] = job.input_path
-        if job.output_bucket_path:
-            execution.add_envs["OUTPUT_PATH"] = job.output_path
+        execution.add_envs["INPUT_PATH"] = execution.input_path
+        execution.add_envs["OUTPUT_PATH"] = execution.output_path
         execution.add_envs["EXECUTION_ID"] = execution.id
 
-    async def _create_input_output_paths_if_needed(self, job: SmartJob):
+    async def _create_input_output_paths_if_needed(self, execution: SmartJobExecution):
+        job = execution.job
         coroutines: list[Coroutine] = []
-        if job.input_bucket_path:
-            logger.info(
-                "Creating input path gs://%s/%s/...",
-                job.input_bucket_name,
-                job._input_path,
+        logger.info(
+            "Creating input path gs://%s/%s/...",
+            job.staging_bucket_name,
+            execution._input_path,
+        )
+        coroutines.append(
+            self.file_uploader_adapter.upload(
+                "", job.staging_bucket_name, execution._input_path + "/"
             )
-            coroutines.append(
-                self.file_uploader_adapter.upload(
-                    "", job.input_bucket_name, job._input_path + "/"
-                )
+        )
+        logger.info(
+            "Creating output path gs://%s/%s/...",
+            job.staging_bucket_name,
+            execution._output_path,
+        )
+        coroutines.append(
+            self.file_uploader_adapter.upload(
+                "", job.staging_bucket_name, execution._output_path + "/"
             )
-        if job.output_bucket_path:
-            logger.info(
-                "Creating output path gs://%s/%s/...",
-                job.output_bucket_name,
-                job._output_path,
-            )
-            coroutines.append(
-                self.file_uploader_adapter.upload(
-                    "", job.output_bucket_name, job._output_path + "/"
-                )
-            )
+        )
         await asyncio.gather(*coroutines, return_exceptions=True)
         logger.debug("Done creating input/output paths")
 
@@ -193,12 +173,9 @@ class SmartJobExecutorService:
         job = execution.job
         if not job.python_script_path:
             return
-        if not job.staging_bucket:
-            raise SmartJobException("staging_bucket is required for python_script_path")
         with open(job.python_script_path) as f:
             content = f.read()
-        sha = hashlib.sha1(content.encode()).hexdigest()
-        destination_path = f"{job.full_name}/{sha[0:2]}/{sha}.py"
+        destination_path = f"{execution.base_dir}/script.py"
         logger.info(
             "Uploading python script (%s) to %s/%s...",
             job.python_script_path,
@@ -248,11 +225,10 @@ class SmartJobExecutorService:
             job_namespace=job.namespace,
             project=job.project,
             region=job.region,
-            short_execution_id=execution.short_id,
             execution_id=execution.id,
         )
         logger.info("Starting a smartjob...")
-        await self._create_input_output_paths_if_needed(job)
+        await self._create_input_output_paths_if_needed(execution)
         await self._upload_python_script_if_needed_and_update_overridden_args(execution)
         res: SmartJobExecutionResultFuture
         if isinstance(job, CloudRunSmartJob):
@@ -280,3 +256,13 @@ class SmartJobExecutorService:
         """
         future = await self.schedule(job)
         return await future.result()
+
+    def sync_run(
+        self, job: SmartJob, add_envs: dict[str, str] | None = None
+    ) -> SmartJobExecutionResult:
+        return asyncio.run(self.run(job, add_envs))
+
+    def sync_schedule(
+        self, job: SmartJob, add_envs: dict[str, str] | None = None
+    ) -> SmartJobExecutionResultFuture:
+        return asyncio.run(self.schedule(job, add_envs))

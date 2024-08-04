@@ -63,8 +63,6 @@ class SmartJob:
 
     python_script_path: str = ""
     staging_bucket: str = ""
-    input_bucket_path: str = ""
-    output_bucket_path: str = ""
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
     service_account: str | None = None
 
@@ -86,15 +84,14 @@ class SmartJob:
             raise SmartJobException("region is required")
         if not self.docker_image:
             raise SmartJobException("docker_image is required")
-        if self.staging_bucket:
-            if not self.staging_bucket.startswith("gs://"):
-                raise SmartJobException("staging_bucket must start with gs://")
-            if "/" in self.staging_bucket[5:]:
-                raise SmartJobException(
-                    "staging_bucket name must not contain / (except for the the gs:// prefix)"
-                )
-        elif self.python_script_path:
-            raise SmartJobException("staging_bucket is required for python_script_path")
+        if not self.staging_bucket:
+            raise SmartJobException("staging_bucket is required")
+        if not self.staging_bucket.startswith("gs://"):
+            raise SmartJobException("staging_bucket must start with gs://")
+        if "/" in self.staging_bucket[5:]:
+            raise SmartJobException(
+                "staging_bucket name must not contain / (except for the the gs:// prefix)"
+            )
 
     def python_script_hash(self) -> str:
         """Return the hash of the python script.
@@ -119,84 +116,14 @@ class SmartJob:
         return self.staging_bucket[5:]  # let's remove gs:// prefix
 
     @property
-    def input_bucket_name(self) -> str:
-        """Return the name of the input bucket without the gs:// prefix.
-
-        If it does not start with gs://, it returns an empty string.
-
-        """
-        if not self.input_bucket_path.startswith("gs://"):
-            return ""
-        return self.input_bucket_path[5:].split("/")[0]
-
-    @property
-    def _input_path(self) -> str:
-        try:
-            return "/".join(self.input_bucket_path[5:].split("/")[1:])
-        except Exception:
-            return ""
-
-    @property
-    def _output_path(self) -> str:
-        try:
-            return "/".join(self.output_bucket_path[5:].split("/")[1:])
-        except Exception:
-            return ""
-
-    @property
-    def output_bucket_name(self) -> str:
-        """Return the name of the output bucket without the gs:// prefix.
-
-        If it does not start with gs://, it returns an empty string.
-
-        """
-        if not self.output_bucket_path.startswith("gs://"):
-            return ""
-        return self.output_bucket_path[5:].split("/")[0]
-
-    @property
     def staging_mount_point(self) -> str:
         """Return the mount point for the staging bucket."""
         raise NotImplementedError("mount_point must be implemented in subclasses")
 
     @property
-    def input_mount_point(self) -> str:
-        """Return the mount point for the input bucket."""
-        raise NotImplementedError("mount_point must be implemented in subclasses")
-
-    @property
-    def output_mount_point(self) -> str:
-        """Return the mount point for the output bucket."""
-        raise NotImplementedError("mount_point must be implemented in subclasses")
-
-    @property
-    def input_path(self) -> str:
-        """Return the input full path."""
-        return f"{self.input_mount_point}/{self._input_path}"
-
-    @property
-    def output_path(self) -> str:
-        """Return the output full path."""
-        return f"{self.output_mount_point}/{self._output_path}"
-
-    @property
     def full_name(self) -> str:
         """Return the full name of the job (namespace + name)."""
         return f"{self.namespace}-{self.name}"
-
-    def set_auto_input_bucket_path(
-        self, input_bucket_base_path: str, execution_id: str
-    ):
-        if not input_bucket_base_path.startswith("gs://"):
-            raise SmartJobException("input_bucket_base_path must start with gs://")
-        self.input_bucket_path = f"{input_bucket_base_path}/{self.full_name}/{execution_id[0:2]}/{execution_id}/input"
-
-    def set_auto_output_bucket_path(
-        self, output_bucket_base_path: str, execution_id: str
-    ):
-        if not output_bucket_base_path.startswith("gs://"):
-            raise SmartJobException("output_bucket_base_path must start with gs://")
-        self.output_bucket_path = f"{output_bucket_base_path}/{self.full_name}/{execution_id[0:2]}/{execution_id}/output"
 
 
 @dataclass
@@ -217,7 +144,6 @@ class CloudRunSmartJob(SmartJob):
         """
         args: list[str] = [self.name, self.project, self.region, self.docker_image]
         args += [self.namespace, self.staging_bucket, self.service_account or ""]
-        args += [self.input_bucket_name, self.output_bucket_name]
         return _hex_hash(*args)[:10]
 
     @property
@@ -247,16 +173,6 @@ class CloudRunSmartJob(SmartJob):
         """Return the mount point for the staging bucket."""
         return "/staging"
 
-    @property
-    def input_mount_point(self) -> str:
-        """Return the mount point for the input bucket."""
-        return "/input"
-
-    @property
-    def output_mount_point(self) -> str:
-        """Return the mount point for the output bucket."""
-        return "/output"
-
 
 @dataclass
 class VertexSmartJob(SmartJob):
@@ -270,16 +186,6 @@ class VertexSmartJob(SmartJob):
     def staging_mount_point(self) -> str:
         """Return the mount point for the staging bucket."""
         return f"/gcs/{self.staging_bucket_name}"
-
-    @property
-    def input_mount_point(self) -> str:
-        """Return the mount point for the input bucket."""
-        return f"/gcs/{self.input_bucket_name}"
-
-    @property
-    def output_mount_point(self) -> str:
-        """Return the mount point for the output bucket."""
-        return f"/gcs/{self.output_bucket_name}"
 
     def assert_is_ready(self):
         """Test if the job is ready to be run.
@@ -310,11 +216,34 @@ class SmartJobExecution:
     overridden_args: list[str] = field(default_factory=list)
 
     @property
-    def short_id(self) -> str:
-        """Return a short id."""
-        if self.id is None:
-            raise SmartJobException("execution_id is not set")
-        return self.id[:8]
+    def base_dir(self) -> str:
+        dat = self.created.strftime("%Y-%m-%d")
+        tim = self.created.strftime("%H%M")
+        return f"{self.job.full_name}/{dat}/{tim}/{self.id}"
+
+    @property
+    def _input_path(self) -> str:
+        return f"{self.base_dir}/input"
+
+    @property
+    def _output_path(self) -> str:
+        return f"{self.base_dir}/output"
+
+    @property
+    def input_path(self) -> str:
+        return f"{self.job.staging_mount_point}/{self._input_path}"
+
+    @property
+    def output_path(self) -> str:
+        return f"{self.job.staging_mount_point}/{self._output_path}"
+
+    @property
+    def full_input_path(self) -> str:
+        return f"{self.job.staging_bucket}/{self._input_path}"
+
+    @property
+    def full_output_path(self) -> str:
+        return f"{self.job.staging_bucket}/{self._output_path}"
 
 
 @dataclass
@@ -326,20 +255,23 @@ class SmartJobExecutionResult:
         created: The datetime when the job has started.
         stopped: The datetime when the job has stopped.
         execution_id: The execution id of the job.
-        short_execution_id: The short execution id of the job.
         job_name: The name of the job.
         job_namespace: The namespace of the job.
+        log_url: The execution log url.
+        full_input_path: The full input path (starting with gs://).
+        full_output_path: The full output path (starting with gs//).
 
     """
 
     success: bool
     created: datetime.datetime
+    stopped: datetime.datetime
     execution_id: str
-    short_execution_id: str
     job_name: str
     job_namespace: str
     log_url: str
-    stopped: datetime.datetime
+    full_input_path: str
+    full_output_path: str
 
     def __bool__(self) -> bool:
         return self.success or False
@@ -349,7 +281,12 @@ class SmartJobExecutionResult:
             state = "SUCCESS"
         else:
             state = "FAILURE"
-        return f"SmartJobExecutionResult(short_execution_id={self.short_execution_id}, job_name={self.job_name}, job_namespace={self.job_namespace}): {state} in {self.duration_seconds or -1} seconds"
+        return f"""SmartJobExecutionResult(
+    job_name={self.job_name}, job_namespace={self.job_namespace},
+    execution_id={self.execution_id},
+    state={state}, duration_seconds={self.duration_seconds},
+    log_url={self.log_url},
+)"""
 
     def asdict(self) -> dict:
         """Return this object as a dictionary."""
@@ -358,14 +295,15 @@ class SmartJobExecutionResult:
             "created": self.created,
             "stopped": self.stopped,
             "execution_id": self.execution_id,
-            "short_execution_id": self.short_execution_id,
             "job_name": self.job_name,
             "job_namespace": self.job_namespace,
             "duration_seconds": self.duration_seconds,
+            "full_input_path": self.full_input_path,
+            "full_output_path": self.full_output_path,
         }
 
     @property
-    def duration_seconds(self) -> int | None:
+    def duration_seconds(self) -> int:
         """The duration of the job in seconds."""
         return (self.stopped - self.created).seconds
 
@@ -379,10 +317,11 @@ class SmartJobExecutionResult:
         return cls(
             created=execution.created,
             execution_id=execution.id,
-            short_execution_id=execution.short_id,
             job_name=execution.job.name,
             job_namespace=execution.job.namespace,
             log_url=execution.log_url,
             success=success,
             stopped=datetime.datetime.now(tz=datetime.timezone.utc),
+            full_input_path=execution.full_input_path,
+            full_output_path=execution.full_output_path,
         )

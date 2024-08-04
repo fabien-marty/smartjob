@@ -111,30 +111,6 @@ class CloudRunSmartJobExecutor(SmartJobExecutorPort):
                     run_v2.VolumeMount(name="staging", mount_path="/staging")
                 )
                 launch_stage = "BETA"
-            if job.input_bucket_name:
-                volumes.append(
-                    run_v2.Volume(
-                        name="input",
-                        gcs=run_v2.GCSVolumeSource(
-                            bucket=job.input_bucket_name, read_only=True
-                        ),
-                    )
-                )
-                volume_mounts.append(
-                    run_v2.VolumeMount(name="input", mount_path="/input")
-                )
-            if job.output_bucket_name:
-                volumes.append(
-                    run_v2.Volume(
-                        name="output",
-                        gcs=run_v2.GCSVolumeSource(
-                            bucket=job.output_bucket_name, read_only=False
-                        ),
-                    )
-                )
-                volume_mounts.append(
-                    run_v2.VolumeMount(name="output", mount_path="/output")
-                )
             request = run_v2.CreateJobRequest(
                 parent=job._parent_name,
                 job_id=job.cloud_run_job_name,

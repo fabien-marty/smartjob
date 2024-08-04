@@ -1,3 +1,5 @@
 # Environnement variables (inside the job container)
 
-Inside the job container, you will get of course 
+- `EXECUTION_ID`: a unique hexa identifier (per execution)
+- `IN_PATH`: 
+- `OUT_PATH`: 

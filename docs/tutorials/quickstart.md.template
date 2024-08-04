@@ -1,0 +1,59 @@
+{{ JINJA_TREE_STYLE1_GENERATED_COMMENT }}
+
+# Quickstart
+
+## Installation
+
+`pip install smartjob`
+
+## Very basic usage as a library
+
+!!! note
+    In this tutorial, we only use Cloud Run Jobs but ideas and concepts are exactly the sames
+    with Vertex AI CustomJobs.
+
+Let's start to use the library with simple synchronous Python code:
+
+``` python
+{{ "cat quickstart1.py"|shell() }}
+```
+
+## Use async features of Python to launch 10 jobs in parallel
+
+``` python
+{{ "cat quickstart2.py"|shell() }}
+```
+
+## Let's execute a local script in a Cloud Run Job without rebuilding/repushing a docker image
+
+Let's start with a basic Python local script `local_script.py`:
+
+``` python
+{{ "cat local_script.py"|shell() }}
+```
+
+Then, let's use the SmartJob library to upload/execute it:
+
+``` python
+{{ "cat quickstart3.py"|shell() }}
+```
+
+## What about the CLI tool?
+
+Let's do the same but with the CLI tool:
+
+``` console
+# Note: you can also use CLI options but it's probably less convenient
+export SMARTJOB_PROJECT="your-gcp-project"
+export SMARTJOB_REGION="us-east1"
+export SMARTJOB_STAGING_BUCKET="gs://a-bucket-name" 
+
+smartjob cloudrun run --docker-image docker.io/python:3.12 --python-script-path ./local_script.py foo
+```
+
+And if we need more CPU/RAM to execute this job?
+
+``` console
+smartjob cloudrun run --docker-image docker.io/python:3.12 --python-script-path ./local_script.py --cpu 2 --memory-gb 4 foo
+```
+

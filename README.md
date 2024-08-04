@@ -16,7 +16,7 @@
 
 ## Quickstart
 
-[Let's go 🚀](https://fabien-marty.github.io/smartjob/tutorial/quickstart/)
+[Let's go 🚀](https://fabien-marty.github.io/smartjob/tutorials/quickstart/)
 
 ## Documentation
 
