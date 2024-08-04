@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import json
 import uuid
 from dataclasses import dataclass, field
 
@@ -240,6 +241,7 @@ class SmartJobExecutionResult:
         log_url: The execution log url.
         full_input_path: The full input path (starting with gs://).
         full_output_path: The full output path (starting with gs//).
+        json_output: if the job has created a json file named smartjob.json in the output directory, it will be stored/decoded here.
 
     """
 
@@ -252,6 +254,7 @@ class SmartJobExecutionResult:
     log_url: str
     full_input_path: str
     full_output_path: str
+    json_output: dict | list | str | float | int | bool | None = None
 
     def __bool__(self) -> bool:
         return self.success or False
@@ -261,12 +264,18 @@ class SmartJobExecutionResult:
             state = "SUCCESS"
         else:
             state = "FAILURE"
-        return f"""SmartJobExecutionResult(
+        if self.json_output is not None:
+            json_output = json.dumps(self.json_output, indent=4)
+        else:
+            json_output = "None"
+        res = f"""SmartJobExecutionResult(
     job_name={self.job_name}, job_namespace={self.job_namespace},
     execution_id={self.execution_id},
     state={state}, duration_seconds={self.duration_seconds},
     log_url={self.log_url},
+    json_output={json_output}
 )"""
+        return res
 
     @property
     def duration_seconds(self) -> int:
@@ -275,7 +284,9 @@ class SmartJobExecutionResult:
 
     @classmethod
     def from_execution(
-        cls, execution: SmartJobExecution, success: bool
+        cls,
+        execution: SmartJobExecution,
+        success: bool,
     ) -> "SmartJobExecutionResult":
         """Create a SmartJobExecutionResult from a SmartJobExecution."""
         if not execution.log_url:

@@ -1,15 +1,16 @@
+import json
 import sys
 
 import typer
 from stlog import setup
 
-from smartjob.app.executor import SmartJobExecutorService
+from smartjob.app.executor import ExecutorService
 from smartjob.app.job import SmartJob
-from smartjob.infra.controllers.lib import get_smart_job_executor_service_singleton
+from smartjob.infra.controllers.lib import get_executor_service_singleton
 
 
-def get_job_service(ctx: typer.Context, **kwargs) -> SmartJobExecutorService:
-    return get_smart_job_executor_service_singleton(
+def get_job_service(ctx: typer.Context, **kwargs) -> ExecutorService:
+    return get_executor_service_singleton(
         namespace=ctx.obj.namespace,
         project=ctx.obj.project,
         region=ctx.obj.region,
@@ -60,7 +61,7 @@ def add_env_argument_to_dict(add_env: list[str]) -> dict[str, str]:
     return add_envs
 
 
-def cli_process(service: SmartJobExecutorService, job: SmartJob, wait: bool):
+def cli_process(service: ExecutorService, job: SmartJob, wait: bool):
     if wait:
         result = service.sync_run(job)
         return_code = 0
@@ -71,6 +72,9 @@ def cli_process(service: SmartJobExecutorService, job: SmartJob, wait: bool):
             return_code = 2
         print("Id:      %s" % result.execution_id)
         print("Logs:    %s" % result.log_url)
+        if result.json_output is not None:
+            print("JsonOutput:")
+            print(json.dumps(result.json_output, indent=4))
         sys.exit(return_code)
     else:
         future = service.sync_schedule(job)

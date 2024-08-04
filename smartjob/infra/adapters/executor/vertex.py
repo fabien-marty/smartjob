@@ -13,7 +13,7 @@ from google.cloud.aiplatform_v1.types.env_var import EnvVar
 from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, MachineSpec
 from stlog import getLogger
 
-from smartjob.app.executor import SmartJobExecutionResultFuture, SmartJobExecutorPort
+from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
 from smartjob.app.job import (
     SmartJobExecution,
     SmartJobExecutionResult,
@@ -58,15 +58,14 @@ class VertexCustomJob(aiplatform.CustomJob):
         return self.state == gca_job_state.JobState.JOB_STATE_SUCCEEDED
 
 
-class VertexSmartJobExecutionResultFuture(SmartJobExecutionResultFuture):
-    def _get_result(self, task_result) -> SmartJobExecutionResult:
-        return task_result
+class VertexExecutionResultFuture(ExecutionResultFuture):
+    def _get_result_from_future(
+        self, future: asyncio.Future
+    ) -> SmartJobExecutionResult:
+        return future.result()
 
-    def _get_result_from_future(self, future) -> SmartJobExecutionResult:
-        return self._get_result(future.result())
 
-
-class VertexSmartJobExecutor(SmartJobExecutorPort):
+class VertexExecutor(ExecutorPort):
     def __init__(self, max_workers: int = 10):
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
 
@@ -132,11 +131,7 @@ class VertexSmartJobExecutor(SmartJobExecutorPort):
                 return future.result()
             await asyncio.sleep(1)
 
-    async def schedule(
-        self, execution: SmartJobExecution
-    ) -> SmartJobExecutionResultFuture:
+    async def schedule(self, execution: SmartJobExecution) -> ExecutionResultFuture:
         loop = asyncio.get_event_loop()
         future = loop.run_in_executor(self.executor, self.sync_run, execution)
-        return VertexSmartJobExecutionResultFuture(
-            self._wait(future), execution=execution
-        )
+        return VertexExecutionResultFuture(self._wait(future), execution=execution)

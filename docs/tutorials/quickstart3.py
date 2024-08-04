@@ -1,12 +1,12 @@
 import stlog
 
-from smartjob import CloudRunSmartJob, get_smart_job_executor_service_singleton
+from smartjob import CloudRunSmartJob, get_executor_service_singleton
 
 # Setup logging
 stlog.setup(level="INFO")
 
 # Get a JobExecutorService object
-job_executor_service = get_smart_job_executor_service_singleton(
+job_executor_service = get_executor_service_singleton(
     project="your-gcp-project",
     region="us-east1",
     staging_bucket="gs://a-bucket-name",

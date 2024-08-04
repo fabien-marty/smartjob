@@ -1,5 +1,5 @@
 import asyncio
-import datetime
+import json
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -8,7 +8,7 @@ from typing import Coroutine
 from stlog import LogContext, getLogger
 
 from smartjob.app.exception import SmartJobException
-from smartjob.app.file_uploader import FileUploaderPort
+from smartjob.app.input import Input
 from smartjob.app.job import (
     DEFAULT_NAMESPACE,
     CloudRunSmartJob,
@@ -17,11 +17,12 @@ from smartjob.app.job import (
     SmartJobExecutionResult,
     VertexSmartJob,
 )
+from smartjob.app.storage import StoragePort
 
 logger = getLogger("smartjob.executor")
 
 
-class SmartJobExecutionResultFuture(ABC):
+class ExecutionResultFuture(ABC):
     """Future-like object to get the result of a job execution.
 
     Attributes:
@@ -38,6 +39,26 @@ class SmartJobExecutionResultFuture(ABC):
         self.__result: SmartJobExecutionResult | None = None
         self.__task = asyncio.create_task(coroutine)
         self.__task.add_done_callback(self._task_done)
+        self._storage_adapter: StoragePort | None = None
+
+    async def _download_output(self) -> dict | list | str | int | float | bool | None:
+        if self._storage_adapter is None:
+            return None
+        logger.info("Downloading smartjob.json from output (if exists)...")
+        raw = await self._storage_adapter.download(
+            self._execution.job.staging_bucket_name,
+            f"{self._execution._output_path}/smartjob.json",
+        )
+        if raw == b"":
+            logger.debug("No smartjob.json found in output")
+            return None
+        try:
+            res = json.loads(raw)
+            logger.debug("smartjob.json downloaded/decoded")
+            return res
+        except Exception:
+            logger.warning("smartjob.json is not a valid json")
+            return None
 
     async def result(self) -> SmartJobExecutionResult:
         """Wait and return the result of the job execution.
@@ -50,14 +71,16 @@ class SmartJobExecutionResultFuture(ABC):
 
         """
         if self.__result is not None:
+            # when _task_done() called BEFORE result()
+            self.__result.json_output = await self._download_output()
             return self.__result
-        task_result = await self.__task
-        res = self._get_result(task_result)
-        if self.__result is not None:
-            res.stopped = self.__result.stopped
-        else:
-            res.stopped = datetime.datetime.now(tz=datetime.timezone.utc)
-        return res
+        await self.__task  # blocking wait for result
+        while True:
+            # wait for _task_done() callback to be called
+            if self.__result is not None:
+                self.__result.json_output = await self._download_output()
+                return self.__result
+            await asyncio.sleep(0.1)
 
     def done(self) -> bool:
         """Return True if the job execution is done."""
@@ -76,16 +99,13 @@ class SmartJobExecutionResultFuture(ABC):
         return self._execution.log_url
 
     @abstractmethod
-    def _get_result(self, task_result) -> SmartJobExecutionResult:
-        pass
-
-    @abstractmethod
-    def _get_result_from_future(self, future) -> SmartJobExecutionResult:
+    def _get_result_from_future(
+        self, future: asyncio.Future
+    ) -> SmartJobExecutionResult:
         pass
 
     def _task_done(self, future: asyncio.Future):
         self.__result = self._get_result_from_future(future)
-        self.__result.stopped = datetime.datetime.now(tz=datetime.timezone.utc)
         if self._execution.cancelled:
             return
         if self.__result.success:
@@ -101,17 +121,17 @@ class SmartJobExecutionResultFuture(ABC):
             )
 
 
-class SmartJobExecutorPort(ABC):
+class ExecutorPort(ABC):
     @abstractmethod
-    async def schedule(self, job: SmartJobExecution) -> SmartJobExecutionResultFuture:
+    async def schedule(self, job: SmartJobExecution) -> ExecutionResultFuture:
         pass
 
 
 @dataclass
-class SmartJobExecutorService:
-    cloudrun_executor_adapter: SmartJobExecutorPort
-    vertex_executor_adapter: SmartJobExecutorPort
-    file_uploader_adapter: FileUploaderPort
+class ExecutorService:
+    cloudrun_executor_adapter: ExecutorPort
+    vertex_executor_adapter: ExecutorPort
+    storage_adapter: StoragePort
     namespace: str = field(
         default_factory=lambda: os.environ.get("SMARTJOB_NAMESPACE", DEFAULT_NAMESPACE)
     )
@@ -150,8 +170,8 @@ class SmartJobExecutorService:
             execution._input_path,
         )
         coroutines.append(
-            self.file_uploader_adapter.upload(
-                "", job.staging_bucket_name, execution._input_path + "/"
+            self.storage_adapter.upload(
+                b"", job.staging_bucket_name, execution._input_path + "/"
             )
         )
         logger.info(
@@ -160,8 +180,8 @@ class SmartJobExecutorService:
             execution._output_path,
         )
         coroutines.append(
-            self.file_uploader_adapter.upload(
-                "", job.staging_bucket_name, execution._output_path + "/"
+            self.storage_adapter.upload(
+                b"", job.staging_bucket_name, execution._output_path + "/"
             )
         )
         await asyncio.gather(*coroutines, return_exceptions=True)
@@ -182,8 +202,8 @@ class SmartJobExecutorService:
             job.staging_bucket,
             destination_path,
         )
-        await self.file_uploader_adapter.upload(
-            content, job.staging_bucket_name, destination_path
+        await self.storage_adapter.upload(
+            content.encode("utf8"), job.staging_bucket_name, destination_path
         )
         logger.debug(
             "Done uploading python script (%s) to %s/%s",
@@ -196,11 +216,24 @@ class SmartJobExecutorService:
             f"{job._staging_mount_point}/{destination_path}",
         ]
 
+    async def _upload_inputs(self, execution: SmartJobExecution, inputs: list[Input]):
+        await asyncio.gather(
+            *[
+                input._create(
+                    execution.job.staging_bucket,
+                    execution._input_path,
+                    self.storage_adapter,
+                )
+                for input in inputs
+            ]
+        )
+
     async def schedule(
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
-    ) -> SmartJobExecutionResultFuture:
+        add_inputs: list[Input] | None = None,
+    ) -> ExecutionResultFuture:
         """Schedule a job and return a kind of future.
 
         Arguments:
@@ -218,6 +251,7 @@ class SmartJobExecutorService:
         )
         self._update_job_with_default_parameters(job, execution_id=execution.id)
         self._update_execution_env(execution)
+        await self._upload_inputs(execution, add_inputs or [])
         job._assert_is_ready()
         LogContext.reset_context()
         LogContext.add(
@@ -230,13 +264,14 @@ class SmartJobExecutorService:
         logger.info("Starting a smartjob...")
         await self._create_input_output_paths_if_needed(execution)
         await self._upload_python_script_if_needed_and_update_overridden_args(execution)
-        res: SmartJobExecutionResultFuture
+        res: ExecutionResultFuture
         if isinstance(job, CloudRunSmartJob):
             res = await self.cloudrun_executor_adapter.schedule(execution)
         elif isinstance(job, VertexSmartJob):
             res = await self.vertex_executor_adapter.schedule(execution)
         else:
             raise SmartJobException("Unknown job type")
+        res._storage_adapter = self.storage_adapter
         return res
 
     async def run(
@@ -264,5 +299,5 @@ class SmartJobExecutorService:
 
     def sync_schedule(
         self, job: SmartJob, add_envs: dict[str, str] | None = None
-    ) -> SmartJobExecutionResultFuture:
+    ) -> ExecutionResultFuture:
         return asyncio.run(self.schedule(job, add_envs))
