@@ -63,8 +63,7 @@ jobs:
       cancel-in-progress: true
     environment:
       name: github-pages
-    # FIXME: change to main
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push' 
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' 
     steps: 
       - name: Download site artifact
         uses: actions/download-artifact@v4
