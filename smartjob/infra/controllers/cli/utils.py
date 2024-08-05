@@ -6,7 +6,7 @@ import typer
 from stlog import setup
 
 from smartjob.app.executor import ExecutorService
-from smartjob.app.input import Input, LocalPathInput
+from smartjob.app.input import GcsInput, Input, LocalPathInput
 from smartjob.app.job import SmartJob
 from smartjob.infra.controllers.lib import get_executor_service_singleton
 
@@ -54,6 +54,10 @@ WaitArgument = typer.Option(True, help="Wait for the job to finish")
 LocalPathInputArgument = typer.Option(
     [],
     help="Local path input (format: filename=local_path, can be used multiple times)",
+)
+GcsPathInputArguments = typer.Option(
+    [],
+    help="GCS path input (format: filename=full_source_gcs_path, can be used multiple times)",
 )
 
 
@@ -109,6 +113,29 @@ def local_path_input_to_list(local_path_input: list[str]) -> list[Input]:
             LocalPathInput(
                 filename=filename,
                 local_path=local_path,
+            )
+        )
+    return res
+
+
+def gcs_input_to_list(gcs_input: list[str]) -> list[Input]:
+    res: list[Input] = []
+    for lpi in gcs_input:
+        if "=" not in lpi:
+            raise ValueError(
+                f"Invalid input format: {lpi} => must be filename=full_gcs_path"
+            )
+        filename, gcs_path = lpi.split("=", 1)
+        if not gcs_path.startswith("gs://"):
+            raise ValueError(f"Invalid GCS path: {gcs_path} => must start with gs://")
+        if "/" not in gcs_path[5:]:
+            raise ValueError(
+                f"Invalid GCS path: {gcs_path} => must have a / after gs://"
+            )
+        res.append(
+            GcsInput(
+                filename=filename,
+                gcs_path=gcs_path,
             )
         )
     return res
