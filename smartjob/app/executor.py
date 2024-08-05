@@ -215,29 +215,30 @@ class ExecutorService:
         ]
 
     async def _upload_inputs(self, execution: Execution, inputs: list[Input]):
-        await asyncio.gather(
-            *[
-                input._create(
-                    execution.job.staging_bucket,
-                    execution._input_path,
-                    self.storage_adapter,
-                )
-                for input in inputs
-            ]
-        )
+        async def _upload_input(input: Input):
+            path = f"gs://{execution.job.staging_bucket_name}/{execution._input_path}/{input.filename}"
+            logger.info(f"Uploading input to {path}...")
+            await input._create(
+                execution.job.staging_bucket_name,
+                execution._input_path,
+                self.storage_adapter,
+            )
+            logger.debug(f"Done uploading input: {path}")
+
+        await asyncio.gather(*[_upload_input(input) for input in inputs])
 
     async def schedule(
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
-        add_inputs: list[Input] | None = None,
+        inputs: list[Input] | None = None,
     ) -> ExecutionResultFuture:
         """Schedule a job and return a kind of future (coroutine version).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
-            add_inputs: Inputs to add for this particular execution.
+            inputs: Inputs to add for this particular execution.
 
         Returns:
             The result of the job execution as a kind of future.
@@ -250,7 +251,7 @@ class ExecutorService:
         )
         self._update_job_with_default_parameters(job, execution_id=execution.id)
         self._update_execution_env(execution)
-        await self._upload_inputs(execution, add_inputs or [])
+        await self._upload_inputs(execution, inputs or [])
         job._assert_is_ready()
         LogContext.reset_context()
         LogContext.add(
@@ -277,36 +278,36 @@ class ExecutorService:
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
-        add_inputs: list[Input] | None = None,
+        inputs: list[Input] | None = None,
     ) -> ExecutionResult:
         """Schedule a job and wait for its completion (couroutine version).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
-            add_inputs: Inputs to add for this particular execution.
+            inputs: Inputs to add for this particular execution.
 
         Returns:
             The result of the job execution.
 
         """
-        future = await self.schedule(job, add_envs=add_envs, add_inputs=add_inputs)
+        future = await self.schedule(job, add_envs=add_envs, inputs=inputs)
         return await future.result()
 
     def sync_run(
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
-        add_inputs: list[Input] | None = None,
+        inputs: list[Input] | None = None,
     ) -> ExecutionResult:
         """Schedule a job and wait for its completion (blocking version).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
-            add_inputs: Inputs to add for this particular execution.
+            inputs: Inputs to add for this particular execution.
 
         Returns:
             The result of the job execution.
         """
-        return asyncio.run(self.run(job, add_envs, add_inputs))
+        return asyncio.run(self.run(job, add_envs, inputs))

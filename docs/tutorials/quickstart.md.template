@@ -38,6 +38,20 @@ Then, let's use the SmartJob library to upload/execute it:
 {{ "cat quickstart3.py"|shell() }}
 ```
 
+## Adding input/output to the job
+
+Let's start with a basic Python local script `local_script2.py`:
+
+``` python
+{{ "cat local_script2.py"|shell() }}
+```
+
+Then, the corresponding SmartJob code to execute it.
+
+``` python
+{{ "cat quickstart4.py"|shell() }}
+```
+
 ## What about the CLI tool?
 
 Let's do the same but with the CLI tool:

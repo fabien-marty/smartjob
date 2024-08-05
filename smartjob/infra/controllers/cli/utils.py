@@ -67,8 +67,10 @@ def add_env_argument_to_dict(add_env: list[str]) -> dict[str, str]:
     return add_envs
 
 
-async def fire_and_forget_job(service: ExecutorService, job: SmartJob):
-    future = await service.schedule(job)
+async def fire_and_forget_job(
+    service: ExecutorService, job: SmartJob, inputs: list[Input]
+):
+    future = await service.schedule(job, inputs=inputs)
     print("SCHEDULED")
     print("Id:      %s" % future.execution_id)
     print("Logs:    %s" % future.log_url)
@@ -78,7 +80,7 @@ def cli_process(
     service: ExecutorService, job: SmartJob, wait: bool, inputs: list[Input]
 ):
     if wait:
-        result = service.sync_run(job)
+        result = service.sync_run(job, inputs=inputs)
         return_code = 0
         if result:
             print("SUCCESS in %i seconds" % (result.duration_seconds or -1))
@@ -92,7 +94,7 @@ def cli_process(
             print(json.dumps(result.json_output, indent=4))
         sys.exit(return_code)
     else:
-        asyncio.run(fire_and_forget_job(service, job))
+        asyncio.run(fire_and_forget_job(service, job, inputs))
 
 
 def local_path_input_to_list(local_path_input: list[str]) -> list[Input]:
