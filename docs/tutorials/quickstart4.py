@@ -8,9 +8,9 @@ stlog.setup(level="INFO")
 
 # Get a JobExecutorService object
 job_executor_service = get_executor_service_singleton(
-    #    project="your-gcp-project",
-    #    region="us-east1",
-    #    staging_bucket="gs://a-bucket-name",
+    project="your-gcp-project",
+    region="us-east1",
+    staging_bucket="gs://a-bucket-name",
 )
 
 # Let's define a Cloud Run job that runs a local Python script

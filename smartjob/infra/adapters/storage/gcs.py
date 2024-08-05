@@ -60,7 +60,14 @@ class GcsStorageAdapter(StoragePort):
         destination_path: str,
         only_if_not_exists: bool = True,
     ) -> str:
-        return "FIXME"
+        kwargs: dict[str, Any] = {}
+        if only_if_not_exists:
+            kwargs["if_generation_match"] = 0
+        sb = self.storage_client.bucket(source_bucket)
+        source_blob = sb.blob(source_path)
+        db = self.storage_client.bucket(destination_bucket)
+        sb.copy_blob(source_blob, db, destination_path, **kwargs)
+        return f"gs://{destination_bucket}/{destination_path}"
 
     async def copy(
         self,

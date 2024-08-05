@@ -71,10 +71,7 @@ class LocalPathInput(Input):
 
 @dataclass
 class GcsInput(Input):
-    """Can be used to copy a file from a GCS bucket to the input path.
-
-    FIXME: not fully implemented yet.
-    """
+    """Can be used to copy a file from a GCS bucket to the input path."""
 
     gcs_path: str
     """GCS path to the file to be copied (e.g. gs://my-bucket/my-file.txt)."""
