@@ -232,11 +232,12 @@ class ExecutorService:
         add_envs: dict[str, str] | None = None,
         add_inputs: list[Input] | None = None,
     ) -> ExecutionResultFuture:
-        """Schedule a job and return a kind of future.
+        """Schedule a job and return a kind of future (coroutine version).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
+            add_inputs: Inputs to add for this particular execution.
 
         Returns:
             The result of the job execution as a kind of future.
@@ -276,26 +277,36 @@ class ExecutorService:
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
+        add_inputs: list[Input] | None = None,
     ) -> ExecutionResult:
-        """Schedule a job and wait for its completion.
+        """Schedule a job and wait for its completion (couroutine version).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
+            add_inputs: Inputs to add for this particular execution.
 
         Returns:
             The result of the job execution.
 
         """
-        future = await self.schedule(job)
+        future = await self.schedule(job, add_envs=add_envs, add_inputs=add_inputs)
         return await future.result()
 
     def sync_run(
-        self, job: SmartJob, add_envs: dict[str, str] | None = None
+        self,
+        job: SmartJob,
+        add_envs: dict[str, str] | None = None,
+        add_inputs: list[Input] | None = None,
     ) -> ExecutionResult:
-        return asyncio.run(self.run(job, add_envs))
+        """Schedule a job and wait for its completion (blocking version).
 
-    def sync_schedule(
-        self, job: SmartJob, add_envs: dict[str, str] | None = None
-    ) -> ExecutionResultFuture:
-        return asyncio.run(self.schedule(job, add_envs))
+        Arguments:
+            job: The job to run.
+            add_envs: Environment variables to add for this particular execution.
+            add_inputs: Inputs to add for this particular execution.
+
+        Returns:
+            The result of the job execution.
+        """
+        return asyncio.run(self.run(job, add_envs, add_inputs))

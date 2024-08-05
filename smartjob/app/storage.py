@@ -13,7 +13,7 @@ class StoragePort(ABC):
     @abstractmethod
     async def upload(
         self,
-        content: bytes,
+        content: bytes | str,
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,

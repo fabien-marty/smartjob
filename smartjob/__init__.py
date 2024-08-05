@@ -1,11 +1,6 @@
 from smartjob.app.exception import SmartJobException
 from smartjob.app.executor import ExecutionResultFuture, ExecutorService
-from smartjob.app.input import (
-    BytesInput,
-    GcsInput,
-    Input,
-    JsonInput,
-)
+from smartjob.app.input import BytesInput, GcsInput, Input, JsonInput, LocalPathInput
 from smartjob.app.job import (
     CloudRunSmartJob,
     ExecutionResult,
@@ -27,4 +22,5 @@ __all__ = [
     "JsonInput",
     "BytesInput",
     "GcsInput",
+    "LocalPathInput",
 ]

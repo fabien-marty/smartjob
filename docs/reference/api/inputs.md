@@ -1,27 +1,34 @@
 # SmartJob inputs
 
-## SmartJob input base class
+## SmartJob base input class
 
 ::: smartjob.Input
     options:
       show_root_heading: true
       heading_level: 3
 
-## SmartJob input JSON class
+## SmartJob JSON input class
 
 ::: smartjob.JsonInput
     options:
       show_root_heading: true
       heading_level: 3
 
-## SmartJob input bytes class
+## SmartJob bytes input class
 
 ::: smartjob.BytesInput
     options:
       show_root_heading: true
       heading_level: 3
 
-## SmartJob GCS class
+## SmartJob local path input class
+
+::: smartjob.LocalPathInput
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+## SmartJob GCS input class
 
 ::: smartjob.GcsInput
     options:

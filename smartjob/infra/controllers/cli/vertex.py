@@ -6,6 +6,7 @@ from smartjob.app.job import VertexSmartJob
 from smartjob.infra.controllers.cli.utils import (
     AddEnvArgument,
     DockerImageArgument,
+    LocalPathInputArgument,
     NameArgument,
     OverrideCommandArgument,
     PythonScriptPathArgument,
@@ -15,6 +16,7 @@ from smartjob.infra.controllers.cli.utils import (
     cli_process,
     get_job_service,
     init_stlog,
+    local_path_input_to_list,
 )
 
 cli = typer.Typer()
@@ -30,10 +32,12 @@ def run(
     staging_bucket: str = StagingBucketArgument,
     python_script_path: str = PythonScriptPathArgument,
     wait: bool = WaitArgument,
+    local_path_input: list[str] = LocalPathInputArgument,
 ):
     init_stlog(ctx)
     overriden_args = shlex.split(override_command_and_args)
     add_envs = add_env_argument_to_dict(add_env)
+    inputs = local_path_input_to_list(local_path_input)
     service = get_job_service(ctx)
     job = VertexSmartJob(
         name=name,
@@ -43,4 +47,4 @@ def run(
         staging_bucket=staging_bucket,
         python_script_path=python_script_path,
     )
-    cli_process(service, job, wait)
+    cli_process(service, job, wait, inputs)

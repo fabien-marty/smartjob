@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 
@@ -5,6 +6,7 @@ import typer
 from stlog import setup
 
 from smartjob.app.executor import ExecutorService
+from smartjob.app.input import Input, LocalPathInput
 from smartjob.app.job import SmartJob
 from smartjob.infra.controllers.lib import get_executor_service_singleton
 
@@ -49,6 +51,10 @@ PythonScriptPathArgument = typer.Option(
     "", help="local path to python script to execute in the container"
 )
 WaitArgument = typer.Option(True, help="Wait for the job to finish")
+LocalPathInputArgument = typer.Option(
+    [],
+    help="Local path input (format: filename=local_path, can be used multiple times)",
+)
 
 
 def add_env_argument_to_dict(add_env: list[str]) -> dict[str, str]:
@@ -61,7 +67,16 @@ def add_env_argument_to_dict(add_env: list[str]) -> dict[str, str]:
     return add_envs
 
 
-def cli_process(service: ExecutorService, job: SmartJob, wait: bool):
+async def fire_and_forget_job(service: ExecutorService, job: SmartJob):
+    future = await service.schedule(job)
+    print("SCHEDULED")
+    print("Id:      %s" % future.execution_id)
+    print("Logs:    %s" % future.log_url)
+
+
+def cli_process(
+    service: ExecutorService, job: SmartJob, wait: bool, inputs: list[Input]
+):
     if wait:
         result = service.sync_run(job)
         return_code = 0
@@ -77,7 +92,21 @@ def cli_process(service: ExecutorService, job: SmartJob, wait: bool):
             print(json.dumps(result.json_output, indent=4))
         sys.exit(return_code)
     else:
-        future = service.sync_schedule(job)
-        print("SCHEDULED")
-        print("Id:      %s" % future.execution_id)
-        print("Logs:    %s" % future.log_url)
+        asyncio.run(fire_and_forget_job(service, job))
+
+
+def local_path_input_to_list(local_path_input: list[str]) -> list[Input]:
+    res: list[Input] = []
+    for lpi in local_path_input:
+        if "=" not in lpi:
+            raise ValueError(
+                f"Invalid input format: {lpi} => must be filename=local_path"
+            )
+        filename, local_path = lpi.split("=", 1)
+        res.append(
+            LocalPathInput(
+                filename=filename,
+                local_path=local_path,
+            )
+        )
+    return res
