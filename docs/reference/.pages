@@ -1,0 +1,4 @@
+nav:
+  - Public API: api
+  - CLI: cli.md
+  - Environnement: env.md

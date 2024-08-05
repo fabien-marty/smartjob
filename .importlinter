@@ -1,0 +1,9 @@
+[importlinter]
+root_package = smartjob
+
+[importlinter:contract:1]
+name=Hexagonal architecture contract
+type=layers
+layers =
+    smartjob.infra
+    smartjob.app

@@ -1,0 +1,111 @@
+name: ci
+
+on:
+  push:
+  release:
+    types: [published]
+  pull_request:
+
+env:
+  POETRY_HOME: /opt/poetry
+
+jobs:
+
+  lint_and_test:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install poetry
+        run: |
+          python3 -m venv $POETRY_HOME
+          $POETRY_HOME/bin/pip install poetry
+      - name: Fix github path
+        run: |
+          echo "$POETRY_HOME/bin" >> "$GITHUB_PATH"
+      - name: Install requirements
+        run: |
+          poetry install
+      - name: Run lint
+        run: |
+          make lint
+      - name: Make docs
+        run: |
+          make doc
+      - name: Upload site as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+      - name: Checking for dirty files
+        run: |
+          make no-dirty
+      - name: Cleaning
+        run: |
+          make clean
+      - name: Checking for dirty files (again)
+        run: |
+          make no-dirty
+
+  githubpages:
+    runs-on: ubuntu-22.04
+    needs: lint_and_test
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+    # FIXME: change to main
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push' 
+    steps: 
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Upload entire repository
+          path: '.'
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  publish_pypi:
+    runs-on: ubuntu-latest
+    needs: lint_and_test
+    if: github.event_name == 'release'
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install poetry
+        run: |
+          python3 -m venv $POETRY_HOME
+          $POETRY_HOME/bin/pip install poetry
+      - name: Fix github path
+        run: |
+          echo "$POETRY_HOME/bin" >> "$GITHUB_PATH"
+      - name: Install requirements
+        run: |
+          poetry install
+      - name: Publish on Pypi
+        run: |
+          VERSION=`echo "${{ github.event.release.tag_name }}" |sed 's/^v//g'`
+          cat pyproject.toml |sed 's/^version = ".*"$/version = "'${VERSION}'"/g' > pyproject.toml.new
+          mv -f pyproject.toml.new pyproject.toml
+          cat pyproject.toml |grep ^version
+          poetry config pypi-token.pypi "${{ secrets.PYPI_TOKEN }}"
+          poetry build
+          poetry publish
