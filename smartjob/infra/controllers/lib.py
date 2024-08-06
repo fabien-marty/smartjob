@@ -1,8 +1,13 @@
+import os
 from typing import Any
+
+import stlog
 
 from smartjob.app.executor import ExecutorService
 from smartjob.infra.adapters.executor.cloudrun import CloudRunExecutor
+from smartjob.infra.adapters.executor.dummy import DummyExecutor
 from smartjob.infra.adapters.executor.vertex import VertexExecutor
+from smartjob.infra.adapters.storage.dummy import DummyStorageAdapter
 from smartjob.infra.adapters.storage.gcs import GcsStorageAdapter
 
 # Default max workers for vertex executor and for file uploader (cloud run executor is not multi-threaded)
@@ -24,6 +29,9 @@ def get_executor_service_singleton(
 
     See ExecutorService or SmartJob for more details on the arguments.
 
+    Note: if SMARTJOB_USE_DUMMY_EXECUTOR is set to 'true', a dummy executor will be returned.
+          (only useful for testing or debugging)
+
     Args:
         max_workers: Maximum number of workers for the vertex executor and for the file uploader.
         namespace: Default namespace to use.
@@ -37,18 +45,28 @@ def get_executor_service_singleton(
 
     """
     global __singleton
+    kwargs: dict[str, Any] = {}
+    if docker_image:
+        kwargs["docker_image"] = docker_image
+    if staging_bucket:
+        kwargs["staging_bucket"] = staging_bucket
+    if region:
+        kwargs["region"] = region
+    if project:
+        kwargs["project"] = project
+    if namespace:
+        kwargs["namespace"] = namespace
+    if os.environ.get("SMARTJOB_USE_DUMMY_EXECUTOR", "false").lower() == "true":
+        stlog.getLogger("smartjob").warning(
+            "Using dummy executor because SMARTJOB_USE_DUMMY_EXECUTOR is set to true"
+        )
+        return ExecutorService(
+            cloudrun_executor_adapter=DummyExecutor(),
+            vertex_executor_adapter=DummyExecutor(),
+            storage_adapter=DummyStorageAdapter(),
+            **kwargs,
+        )
     if __singleton is None:
-        kwargs: dict[str, Any] = {}
-        if docker_image:
-            kwargs["docker_image"] = docker_image
-        if staging_bucket:
-            kwargs["staging_bucket"] = staging_bucket
-        if region:
-            kwargs["region"] = region
-        if project:
-            kwargs["project"] = project
-        if namespace:
-            kwargs["namespace"] = namespace
         __singleton = ExecutorService(
             cloudrun_executor_adapter=CloudRunExecutor(),
             vertex_executor_adapter=VertexExecutor(max_workers=max_workers),

@@ -41,6 +41,11 @@ class ExecutionResultFuture(ABC):
         self.__task.add_done_callback(self._task_done)
         self._storage_adapter: StoragePort | None = None
 
+    def _cancel(self):
+        if not self.__result and not self._execution.cancelled:
+            self._execution.cancelled = True
+            self.__task.cancel()
+
     async def _download_output(self) -> dict | list | str | int | float | bool | None:
         if self._storage_adapter is None:
             return None
