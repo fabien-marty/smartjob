@@ -97,7 +97,6 @@ class GcsStorageAdapter(StoragePort):
         try:
             return blob.download_as_bytes()
         except NotFound:
-            print("not found")
             return b""
 
     async def download(
