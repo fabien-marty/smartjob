@@ -4,6 +4,9 @@ version = "0.0.1"
 description = "Little async python library for dealing with GCP/Cloud Run Jobs and GCP/VertexAI CustomJobs"
 authors = ["Fabien MARTY <fab@fabien-marty.dev>"]
 readme = "README.md"
+packages = [
+    {include="smartjob"},
+]
 
 [tool.poetry.dependencies]
 python = "^3.10"
