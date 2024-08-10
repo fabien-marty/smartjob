@@ -4,6 +4,7 @@ from typing import Any
 import stlog
 
 from smartjob.app.executor import ExecutorService
+from smartjob.app.storage import StorageService
 from smartjob.infra.adapters.executor.cloudrun import CloudRunExecutor
 from smartjob.infra.adapters.executor.dummy import DummyExecutor
 from smartjob.infra.adapters.executor.vertex import VertexExecutor
@@ -63,14 +64,16 @@ def get_executor_service_singleton(
         return ExecutorService(
             cloudrun_executor_adapter=DummyExecutor(),
             vertex_executor_adapter=DummyExecutor(),
-            storage_adapter=DummyStorageAdapter(),
+            storage_service=StorageService(adapter=DummyStorageAdapter()),
             **kwargs,
         )
     if __singleton is None:
         __singleton = ExecutorService(
             cloudrun_executor_adapter=CloudRunExecutor(),
             vertex_executor_adapter=VertexExecutor(max_workers=max_workers),
-            storage_adapter=GcsStorageAdapter(max_workers=max_workers),
+            storage_service=StorageService(
+                adapter=GcsStorageAdapter(max_workers=max_workers)
+            ),
             **kwargs,
         )
     return __singleton

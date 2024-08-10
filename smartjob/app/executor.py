@@ -17,7 +17,7 @@ from smartjob.app.job import (
     SmartJob,
     VertexSmartJob,
 )
-from smartjob.app.storage import StoragePort
+from smartjob.app.storage import StorageService
 
 logger = getLogger("smartjob.executor")
 
@@ -39,7 +39,7 @@ class ExecutionResultFuture(ABC):
         self.__result: ExecutionResult | None = None
         self.__task = asyncio.create_task(coroutine)
         self.__task.add_done_callback(self._task_done)
-        self._storage_adapter: StoragePort | None = None
+        self._storage_service: StorageService | None = None
 
     def _cancel(self):
         if not self.__result and not self._execution.cancelled:
@@ -47,10 +47,10 @@ class ExecutionResultFuture(ABC):
             self.__task.cancel()
 
     async def _download_output(self) -> dict | list | str | int | float | bool | None:
-        if self._storage_adapter is None:
+        if self._storage_service is None:
             return None
         logger.info("Downloading smartjob.json from output (if exists)...")
-        raw = await self._storage_adapter.download(
+        raw = await self._storage_service.download(
             self._execution.job.staging_bucket_name,
             f"{self._execution._output_path}/smartjob.json",
         )
@@ -134,7 +134,7 @@ class ExecutorPort(ABC):
 class ExecutorService:
     cloudrun_executor_adapter: ExecutorPort
     vertex_executor_adapter: ExecutorPort
-    storage_adapter: StoragePort
+    storage_service: StorageService
     namespace: str = field(
         default_factory=lambda: os.environ.get("SMARTJOB_NAMESPACE", DEFAULT_NAMESPACE)
     )
@@ -173,7 +173,7 @@ class ExecutorService:
             execution._input_path,
         )
         coroutines.append(
-            self.storage_adapter.upload(
+            self.storage_service.upload(
                 b"", job.staging_bucket_name, execution._input_path + "/"
             )
         )
@@ -183,7 +183,7 @@ class ExecutorService:
             execution._output_path,
         )
         coroutines.append(
-            self.storage_adapter.upload(
+            self.storage_service.upload(
                 b"", job.staging_bucket_name, execution._output_path + "/"
             )
         )
@@ -205,7 +205,7 @@ class ExecutorService:
             job.staging_bucket,
             destination_path,
         )
-        await self.storage_adapter.upload(
+        await self.storage_service.upload(
             content.encode("utf8"), job.staging_bucket_name, destination_path
         )
         logger.debug(
@@ -226,7 +226,7 @@ class ExecutorService:
             await input._create(
                 execution.job.staging_bucket_name,
                 execution._input_path,
-                self.storage_adapter,
+                self.storage_service,
             )
             logger.debug(f"Done uploading input: {path}")
 
@@ -276,7 +276,7 @@ class ExecutorService:
             res = await self.vertex_executor_adapter.schedule(execution)
         else:
             raise SmartJobException("Unknown job type")
-        res._storage_adapter = self.storage_adapter
+        res._storage_service = self.storage_service
         return res
 
     async def run(
