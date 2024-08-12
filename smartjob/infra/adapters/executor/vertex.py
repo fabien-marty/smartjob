@@ -131,3 +131,10 @@ class VertexExecutor(ExecutorPort):
         loop = asyncio.get_event_loop()
         future = loop.run_in_executor(self.executor, self.sync_run, execution)
         return VertexExecutionResultFuture(self._wait(future), execution=execution)
+
+    def pre_schedule_checks(self, execution: Execution):
+        if execution.max_attempts > 1:
+            logger.warning(
+                "Vertex executor does not support retries yet => forcing RetryConfig.max_attempts_execute to 1"
+            )
+            execution.max_attempts = 1

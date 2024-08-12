@@ -31,7 +31,7 @@ class GcsStorageAdapter(StoragePort):
         if only_if_not_exists:
             kwargs["if_generation_match"] = 0
         try:
-            blob.upload_from_string(content, **kwargs)
+            blob.upload_from_string(content, **kwargs, retry=None)
         except PreconditionFailed:
             pass
         return f"gs://{destination_bucket}/{destination_path}"
@@ -60,7 +60,7 @@ class GcsStorageAdapter(StoragePort):
         destination_path: str,
         only_if_not_exists: bool = True,
     ) -> str:
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {"retry": None}
         if only_if_not_exists:
             kwargs["if_generation_match"] = 0
         sb = self.storage_client.bucket(source_bucket)
@@ -95,7 +95,7 @@ class GcsStorageAdapter(StoragePort):
         b = self.storage_client.bucket(source_bucket)
         blob = b.blob(source_path)
         try:
-            return blob.download_as_bytes()
+            return blob.download_as_bytes(retry=None)
         except NotFound:
             return b""
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Coroutine
 
 from stlog import LogContext, getLogger
+from tenacity import AsyncRetrying, RetryError, stop_after_attempt, wait_exponential
 
 from smartjob.app.exception import SmartJobException
 from smartjob.app.input import Input
@@ -17,6 +18,7 @@ from smartjob.app.job import (
     SmartJob,
     VertexSmartJob,
 )
+from smartjob.app.retry import RetryConfig
 from smartjob.app.storage import StorageService
 
 logger = getLogger("smartjob.executor")
@@ -75,17 +77,12 @@ class ExecutionResultFuture(ABC):
             The result of the job execution.
 
         """
-        if self.__result is not None:
-            # when _task_done() called BEFORE result()
-            self.__result.json_output = await self._download_output()
-            return self.__result
-        await self.__task  # blocking wait for result
         while True:
             # wait for _task_done() callback to be called
             if self.__result is not None:
                 self.__result.json_output = await self._download_output()
                 return self.__result
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(1.0)
 
     def done(self) -> bool:
         """Return True if the job execution is done."""
@@ -129,6 +126,10 @@ class ExecutorPort(ABC):
     async def schedule(self, job: Execution) -> ExecutionResultFuture:
         pass
 
+    @abstractmethod
+    def pre_schedule_checks(self, execution: Execution):
+        pass
+
 
 @dataclass
 class ExecutorService:
@@ -146,6 +147,7 @@ class ExecutorService:
     staging_bucket: str = field(
         default_factory=lambda: os.environ.get("SMARTJOB_STAGING_BUCKET", "")
     )
+    retry_config: RetryConfig = field(default_factory=RetryConfig)
 
     def _update_job_with_default_parameters(self, job: SmartJob, execution_id: str):
         if not job.namespace:
@@ -232,30 +234,30 @@ class ExecutorService:
 
         await asyncio.gather(*[_upload_input(input) for input in inputs])
 
-    async def schedule(
+    def get_executor(self, execution: Execution) -> ExecutorPort:
+        if isinstance(execution.job, CloudRunSmartJob):
+            return self.cloudrun_executor_adapter
+        elif isinstance(execution.job, VertexSmartJob):
+            return self.vertex_executor_adapter
+        raise SmartJobException("Unknown job type")
+
+    async def _schedule(
         self,
         job: SmartJob,
+        retry_config: RetryConfig,
         add_envs: dict[str, str] | None = None,
         inputs: list[Input] | None = None,
     ) -> ExecutionResultFuture:
-        """Schedule a job and return a kind of future (coroutine version).
-
-        Arguments:
-            job: The job to run.
-            add_envs: Environment variables to add for this particular execution.
-            inputs: Inputs to add for this particular execution.
-
-        Returns:
-            The result of the job execution as a kind of future.
-
-        """
         execution = Execution(
             job,
             overridden_args=list(job.overridden_args),
             add_envs={**job.add_envs, **(add_envs or {})},
+            max_attempts=retry_config._max_attempts_execute,
         )
         self._update_job_with_default_parameters(job, execution_id=execution.id)
         self._update_execution_env(execution)
+        executor = self.get_executor(execution)
+        executor.pre_schedule_checks(execution)
         await self._upload_inputs(execution, inputs or [])
         job._assert_is_ready()
         LogContext.reset_context()
@@ -269,21 +271,49 @@ class ExecutorService:
         logger.info("Starting a smartjob...")
         await self._create_input_output_paths_if_needed(execution)
         await self._upload_python_script_if_needed_and_update_overridden_args(execution)
-        res: ExecutionResultFuture
-        if isinstance(job, CloudRunSmartJob):
-            res = await self.cloudrun_executor_adapter.schedule(execution)
-        elif isinstance(job, VertexSmartJob):
-            res = await self.vertex_executor_adapter.schedule(execution)
-        else:
-            raise SmartJobException("Unknown job type")
+        res = await executor.schedule(execution)
         res._storage_service = self.storage_service
         return res
+
+    async def schedule(
+        self,
+        job: SmartJob,
+        add_envs: dict[str, str] | None = None,
+        inputs: list[Input] | None = None,
+        retry_config: RetryConfig | None = None,
+    ) -> ExecutionResultFuture:
+        """Schedule a job and return a kind of future (coroutine version).
+
+        Arguments:
+            job: The job to run.
+            add_envs: Environment variables to add for this particular execution.
+            inputs: Inputs to add for this particular execution.
+            retry_config: FIXME.
+
+        Returns:
+            The result of the job execution as a kind of future.
+
+        """
+        retry_config = retry_config or self.retry_config
+        try:
+            async for attempt in AsyncRetrying(
+                wait=wait_exponential(multiplier=1, min=1, max=300),
+                stop=stop_after_attempt(retry_config._max_attempts_schedule),
+            ):
+                with attempt:
+                    return await self._schedule(
+                        job, add_envs=add_envs, inputs=inputs, retry_config=retry_config
+                    )
+        except RetryError:
+            raise
+        raise Exception("Unreachable code")
 
     async def run(
         self,
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
         inputs: list[Input] | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> ExecutionResult:
         """Schedule a job and wait for its completion (couroutine version).
 
@@ -291,12 +321,16 @@ class ExecutorService:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
             inputs: Inputs to add for this particular execution.
+            retry_config: FIXME.
 
         Returns:
             The result of the job execution.
 
         """
-        future = await self.schedule(job, add_envs=add_envs, inputs=inputs)
+        retry_config = retry_config or self.retry_config
+        future = await self.schedule(
+            job, add_envs=add_envs, inputs=inputs, retry_config=retry_config
+        )
         return await future.result()
 
     def sync_run(
@@ -304,6 +338,7 @@ class ExecutorService:
         job: SmartJob,
         add_envs: dict[str, str] | None = None,
         inputs: list[Input] | None = None,
+        retry_config: RetryConfig | None = None,
     ) -> ExecutionResult:
         """Schedule a job and wait for its completion (blocking version).
 
@@ -311,8 +346,9 @@ class ExecutorService:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
             inputs: Inputs to add for this particular execution.
+            retry_config: FIXME.
 
         Returns:
             The result of the job execution.
         """
-        return asyncio.run(self.run(job, add_envs, inputs))
+        return asyncio.run(self.run(job, add_envs, inputs, retry_config=retry_config))

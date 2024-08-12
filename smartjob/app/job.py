@@ -211,6 +211,7 @@ class Execution:
     cancelled: bool = field(default=False, init=False)
     add_envs: dict[str, str] = field(default_factory=dict)
     overridden_args: list[str] = field(default_factory=list)
+    max_attempts: int = field(default=1)
 
     @property
     def base_dir(self) -> str:

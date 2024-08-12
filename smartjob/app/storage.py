@@ -1,5 +1,9 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from tenacity import AsyncRetrying, RetryError, stop_after_attempt, wait_exponential
+
+from smartjob.app.retry import RetryConfig
 
 
 class StoragePort(ABC):
@@ -32,9 +36,19 @@ class StoragePort(ABC):
 @dataclass
 class StorageService:
     adapter: StoragePort
+    retry_config: RetryConfig = field(default_factory=RetryConfig)
 
     async def download(self, source_bucket: str, source_path: str) -> bytes:
-        return await self.adapter.download(source_bucket, source_path)
+        try:
+            async for attempt in AsyncRetrying(
+                wait=wait_exponential(min=1, max=300, multiplier=1),
+                stop=stop_after_attempt(self.retry_config._max_attempts_download),
+            ):
+                with attempt:
+                    return await self.adapter.download(source_bucket, source_path)
+        except RetryError:
+            raise
+        return b""
 
     async def upload(
         self,

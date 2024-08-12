@@ -23,3 +23,6 @@ class DummyExecutor(ExecutorPort):
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         execution.log_url = "https://example.com/log"
         return DummyExecutionResultFuture(self.work(execution), execution)
+
+    def pre_schedule_checks(self, execution: Execution):
+        pass

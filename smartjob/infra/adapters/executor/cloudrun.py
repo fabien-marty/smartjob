@@ -79,7 +79,8 @@ class CloudRunExecutor(ExecutorPort):
         if key in self.job_list_cache:
             self.job_list_cache.pop(key)
 
-    async def create_job_if_needed(self, job: CloudRunSmartJob):
+    async def create_job_if_needed(self, execution: Execution):
+        job = cast(CloudRunSmartJob, execution.job)
         async with self.client_cache_lock:
             job_list_cache = await self.get_job_list_cache(job.project, job.region)
             if job._full_cloud_run_job_name in job_list_cache:
@@ -118,6 +119,7 @@ class CloudRunExecutor(ExecutorPort):
                     template=run_v2.ExecutionTemplate(
                         task_count=1,
                         template=run_v2.TaskTemplate(
+                            max_retries=execution.max_attempts - 1,
                             execution_environment=run_v2.ExecutionEnvironment(
                                 run_v2.ExecutionEnvironment.EXECUTION_ENVIRONMENT_GEN2
                             ),
@@ -136,7 +138,6 @@ class CloudRunExecutor(ExecutorPort):
                                 )
                             ],
                             volumes=volumes,
-                            max_retries=1,
                             service_account=job.service_account,
                         ),
                     ),
@@ -152,7 +153,7 @@ class CloudRunExecutor(ExecutorPort):
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         job = cast(CloudRunSmartJob, execution.job)
-        await self.create_job_if_needed(job)
+        await self.create_job_if_needed(execution)
         request = run_v2.RunJobRequest(
             name=job._full_cloud_run_job_name,
             overrides=run_v2.RunJobRequest.Overrides(
@@ -181,3 +182,6 @@ class CloudRunExecutor(ExecutorPort):
         operation = await self.client.run_job(request=request)
         execution.log_url = operation.metadata.log_uri
         return CloudRunExecutionResultFuture(operation.result(), execution=execution)
+
+    def pre_schedule_checks(self, execution: Execution):
+        pass
