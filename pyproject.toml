@@ -27,6 +27,8 @@ mkdocs-material = "^9.5.31"
 mkdocs-awesome-pages-plugin = "^2.9.3"
 jinja-tree = "^0.6.0"
 
+pytest = "^8.3.2"
+pytest-asyncio = "^0.23.8"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

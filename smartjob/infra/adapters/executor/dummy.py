@@ -1,28 +1,45 @@
 import asyncio
+from dataclasses import dataclass, field
 
+from smartjob.app.execution import Execution, ExecutionResult
 from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
-from smartjob.app.job import (
-    Execution,
-    ExecutionResult,
-)
+from smartjob.app.storage import StorageService
+from smartjob.infra.adapters.storage.dummy import DummyStorageAdapter
 
 
 class DummyExecutionResultFuture(ExecutionResultFuture):
     def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         return future.result()
 
+    async def _get_output(self) -> dict | list | str | int | float | bool | None:
+        return None
 
-class DummyExecutor(ExecutorPort):
-    def __init__(self, sleep: float = 1.0):
-        self._sleep = sleep
+
+def make_storage_service() -> StorageService:
+    return StorageService(adapter=DummyStorageAdapter())
+
+
+@dataclass
+class DummyExecutorAdapter(ExecutorPort):
+    sleep: float = 1.0
+    storage_service: StorageService = field(default_factory=make_storage_service)
 
     async def work(self, execution: Execution) -> ExecutionResult:
-        await asyncio.sleep(self._sleep)
-        return ExecutionResult.from_execution(execution, True)
+        await asyncio.sleep(self.sleep)
+        return ExecutionResult.from_execution(
+            execution, True, "https://no-log-url.com/sorry"
+        )
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
-        execution.log_url = "https://example.com/log"
-        return DummyExecutionResultFuture(self.work(execution), execution)
+        return DummyExecutionResultFuture(
+            self.work(execution),
+            execution,
+            storage_service=self.storage_service,
+            log_url="https://no-log-url.com/sorry",
+        )
 
-    def pre_schedule_checks(self, execution: Execution):
+    async def prepare(self, execution: Execution):
         pass
+
+    def get_name(self):
+        return "dummy"

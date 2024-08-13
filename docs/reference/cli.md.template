@@ -2,44 +2,34 @@
 
 # CLI reference
 
-## Main/global options
+!!! tip
 
-Main options are:
+    You can define some options by setting environment variables.
+    This is probably the most convenient way.
 
-```console
+## `run` command
 
-$ smartjob --help
+To execute jobs synchronously (wait for their completion and get their result), you have to use the `run` CLI command.
 
-{{ "smartjob --help"|shell() }}
+``` console
+
+$ smartjob run --help
+
+{{ "smartjob run --help"|shell() }}
+```
+
+## `schedule` command
+
+To execute jobs in a "fire and forget" way, you have to use the `schedule` CLI command.
+
+``` console
+
+$ smartjob schedule --help
+
+{{ "smartjob schedule --help"|shell() }}
 ```
 
 !!! tip
 
-    You can define main/global options by setting environment variables.
-    This is probably the most convenient way.
-
-## `cloudrun` command
-
-To execute jobs on Cloud Run, you have to use the `cloudrun` CLI command.
-
-For the moment, it has only a `run` sub-command:
-
-``` console
-
-$ smartjob cloudrun run --help
-
-{{ "smartjob cloudrun run --help"|shell() }}
-```
-
-## `vertex` command
-
-To execute jobs on Vertex AI jobs, you have to use the `vertex` CLI command.
-
-For the moment, it has only a `run` sub-command:
-
-``` console
-
-$ smartjob vertex run --help
-
-{{ "smartjob vertex run --help"|shell() }}
-```
+    You can define the executor type: `cloudrun` or `vertex` with the option `--executor`
+    (`cloudrun` will be used by default).

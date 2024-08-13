@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import shlex
 import sys
-import typing
+from dataclasses import dataclass, field
 from threading import Lock
 
 from google.cloud import aiplatform
@@ -13,12 +13,9 @@ from google.cloud.aiplatform_v1.types.env_var import EnvVar
 from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, MachineSpec
 from stlog import getLogger
 
-from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
-from smartjob.app.job import (
-    Execution,
-    ExecutionResult,
-    VertexSmartJob,
-)
+from smartjob.app.execution import Execution, ExecutionResult
+from smartjob.app.executor import ExecutionResultFuture
+from smartjob.infra.adapters.executor.gcp import GCPExecutionResultFuture, GCPExecutor
 
 aiplatform_mutex = Lock()
 aiplatform_initialized: bool = False
@@ -46,38 +43,100 @@ def init_aiplatform():
 
 
 class VertexCustomJob(aiplatform.CustomJob):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.resource_created = asyncio.Event()
+
     @property
     def id(self) -> str:
         return self.resource_name.split("/")[-1]
 
-    def get_log_url(self, project) -> str:
-        return f"https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{self.id}%22?project={project}"
+    async def get_log_url(self, project) -> str:
+        await self.resource_created.wait()
+        return self._get_log_url(project)
+
+    def _get_log_url(self, project) -> str:
+        try:
+            return f"https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{self.id}%22?project={project}"
+        except Exception:
+            return "https://no-log-url.com/sorry"
 
     @property
     def success(self) -> bool:
         return self.state == gca_job_state.JobState.JOB_STATE_SUCCEEDED
 
 
-class VertexExecutionResultFuture(ExecutionResultFuture):
+class VertexExecutionResultFuture(GCPExecutionResultFuture):
     def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         return future.result()
 
 
-class VertexExecutor(ExecutorPort):
-    def __init__(self, max_workers: int = 10):
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+@dataclass
+class VertexExecutorAdapter(GCPExecutor):
+    _executor: concurrent.futures.ThreadPoolExecutor | None = field(
+        default=None, init=False
+    )
+
+    def __post_init__(self):
+        super().__post_init__()
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers
+        )
+
+    @property
+    def executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        assert self._executor is not None
+        return self._executor
 
     def init_aiplatform_if_needed(self):
         init_aiplatform()
 
-    def sync_run(self, execution: Execution) -> ExecutionResult:
+    def sync_run(
+        self, custom_job: VertexCustomJob, execution: Execution
+    ) -> ExecutionResult:
         self.init_aiplatform_if_needed()
-        job = typing.cast(VertexSmartJob, execution.job)
-        customJob = VertexCustomJob(
-            display_name=f"{job.namespace}-{job.name}-{execution.id}",
-            project=job.project,
-            location=job.region,
-            staging_bucket=job.staging_bucket,
+        job = execution.job
+        logger.info(
+            "Let's trigger a new execution of Vertex Job: %s...",
+            f"{job.full_name}-{execution.id}",
+            docker_image=job.docker_image,
+            overridden_args=shlex.join(execution.overridden_args),
+            add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
+        )
+        try:
+            custom_job.submit(
+                disable_retries=True,
+                timeout=execution.config._timeout_seconds,
+                service_account=execution.config.service_account,
+            )
+            custom_job.resource_created.set()
+            custom_job._block_until_complete()
+        except RuntimeError:
+            pass
+        finally:
+            custom_job.resource_created.set()
+        return ExecutionResult.from_execution(
+            execution,
+            custom_job.success,
+            custom_job._get_log_url(execution.config._project),
+        )
+
+    # TODO: we can probably do this in a better way
+    async def _wait(self, future: asyncio.Future[ExecutionResult]) -> ExecutionResult:
+        while True:
+            if future.done():
+                return future.result()
+            await asyncio.sleep(1)
+
+    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
+        job = execution.job
+        config = execution.config
+        loop = asyncio.get_event_loop()
+        custom_job = VertexCustomJob(
+            display_name=f"{job.full_name}-{execution.id}",
+            project=execution.config._project,
+            location=execution.config._region,
+            staging_bucket=execution.config._staging_bucket,
             worker_pool_specs=[
                 custom_job_v1.WorkerPoolSpec(
                     replica_count=1,
@@ -90,51 +149,32 @@ class VertexExecutor(ExecutorPort):
                         ],
                     ),
                     machine_spec=MachineSpec(
-                        machine_type=job.machine_type,
-                        accelerator_type=job.accelerator_type,
-                        accelerator_count=job.accelerator_count,
+                        machine_type=execution.config._machine_type,
+                        accelerator_type=execution.config._accelerator_type,
+                        accelerator_count=execution.config._accelerator_count,
                     ),
                     disk_spec=DiskSpec(
-                        boot_disk_type=job.boot_disk_type,
-                        boot_disk_size_gb=job.boot_disk_size_gb,
+                        boot_disk_type=execution.config._boot_disk_type,
+                        boot_disk_size_gb=execution.config._boot_disk_size_gb,
                     ),
                 )
             ],
         )
-        logger.info(
-            "Let's trigger a new execution of Vertex Job: %s...",
-            f"{job.namespace}-{job.name}-{execution.id}",
-            docker_image=job.docker_image,
-            overridden_args=shlex.join(execution.overridden_args),
-            add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
+        future = loop.run_in_executor(
+            self.executor, self.sync_run, custom_job, execution
         )
-        try:
-            customJob.submit(
-                disable_retries=True,
-                timeout=job.timeout_seconds,
-                service_account=job.service_account,
-            )
-            execution.log_url = customJob.get_log_url(job.project)
-            customJob._block_until_complete()
-        except RuntimeError:
-            pass
-        return ExecutionResult.from_execution(execution, customJob.success)
+        async with asyncio.timeout(120):
+            log_url = await custom_job.get_log_url(execution.config._project)
+        return VertexExecutionResultFuture(
+            self._wait(future),
+            execution=execution,
+            storage_service=self.storage_service,
+            gcs_output_path=f"{config._staging_bucket}/{execution.output_relative_path}",
+            log_url=log_url,
+        )
 
-    # TODO: we can probably do this in a better way
-    async def _wait(self, future: asyncio.Future[ExecutionResult]) -> ExecutionResult:
-        while True:
-            if future.done():
-                return future.result()
-            await asyncio.sleep(1)
+    def staging_mount_path(self, execution: Execution) -> str:
+        return f"/gcs/{execution.config._staging_bucket_name}"
 
-    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
-        loop = asyncio.get_event_loop()
-        future = loop.run_in_executor(self.executor, self.sync_run, execution)
-        return VertexExecutionResultFuture(self._wait(future), execution=execution)
-
-    def pre_schedule_checks(self, execution: Execution):
-        if execution.max_attempts > 1:
-            logger.warning(
-                "Vertex executor does not support retries yet => forcing RetryConfig.max_attempts_execute to 1"
-            )
-            execution.max_attempts = 1
+    def get_name(self) -> str:
+        return "vertex"

@@ -1,15 +1,18 @@
 import asyncio
 import json
+from dataclasses import dataclass, field
 
 from smartjob.app.storage import StoragePort
 
 
+@dataclass
 class DummyStorageAdapter(StoragePort):
-    def __init__(self, sleep: float = 1.0):
-        self._sleep = sleep
+    sleep: float = 1.0
+    keep_in_memory: bool = False
+    data: dict[str, bytes | str] = field(default_factory=dict, init=False)
 
-    async def sleep(self):
-        await asyncio.sleep(self._sleep)
+    async def _sleep(self):
+        await asyncio.sleep(self.sleep)
 
     async def upload(
         self,
@@ -18,7 +21,9 @@ class DummyStorageAdapter(StoragePort):
         destination_path: str,
         only_if_not_exists: bool = True,
     ) -> str:
-        await self.sleep()
+        await self._sleep()
+        if self.keep_in_memory:
+            self.data[destination_path] = content
         return f"{destination_bucket}/{destination_path}"
 
     async def copy(
@@ -29,7 +34,11 @@ class DummyStorageAdapter(StoragePort):
         destination_path: str,
         only_if_not_exists: bool = True,
     ) -> str:
-        await self.sleep()
+        await self._sleep()
+        if self.keep_in_memory:
+            self.data[destination_path] = (
+                f"copied from {source_bucket}/{source_path}".encode()
+            )
         return f"{destination_bucket}/{destination_path}"
 
     async def download(
@@ -37,5 +46,5 @@ class DummyStorageAdapter(StoragePort):
         source_bucket: str,
         source_path: str,
     ) -> bytes:
-        await self.sleep()
+        await self._sleep()
         return json.dumps({"dummy": "result"}).encode()

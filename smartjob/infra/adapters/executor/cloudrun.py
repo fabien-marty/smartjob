@@ -1,18 +1,16 @@
 import asyncio
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 import google.api_core.exceptions as gac_exceptions
 from google.cloud import run_v2
 from stlog import getLogger
 
-from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
-from smartjob.app.job import (
-    CloudRunSmartJob,
-    Execution,
-    ExecutionResult,
-)
+from smartjob.app.execution import Execution, ExecutionResult
+from smartjob.app.executor import ExecutionResultFuture
+from smartjob.app.utils import hex_hash
+from smartjob.infra.adapters.executor.gcp import GCPExecutionResultFuture, GCPExecutor
 
 logger = getLogger("smartjob.executor.cloudrun")
 
@@ -23,26 +21,49 @@ class JobListCacheKey:
     region: str
 
 
-class CloudRunExecutionResultFuture(ExecutionResultFuture):
+class CloudRunExecutionResultFuture(GCPExecutionResultFuture):
     def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
         try:
             task_result = future.result()
             success = False
             castedResult = cast(run_v2.Execution, task_result)
             success = castedResult.succeeded_count > 0
-            return ExecutionResult.from_execution(self._execution, success)
+            return ExecutionResult.from_execution(
+                self._execution, success, self.log_url
+            )
         except gac_exceptions.GoogleAPICallError:
             pass
         except asyncio.CancelledError:
             self._execution.cancelled = True
-        return ExecutionResult.from_execution(self._execution, False)
+        return ExecutionResult.from_execution(self._execution, False, self.log_url)
 
 
-class CloudRunExecutor(ExecutorPort):
-    def __init__(self):
-        self.job_list_cache: dict[JobListCacheKey, list[str]] | None = None
-        self.client_cache: run_v2.JobsAsyncClient | None = None
-        self.client_cache_lock = asyncio.Lock()
+@dataclass
+class CloudRunExecutorAdapter(GCPExecutor):
+    job_list_cache: dict[JobListCacheKey, list[str]] = field(
+        default_factory=dict, init=False
+    )
+    client_cache: run_v2.JobsAsyncClient | None = field(default=None, init=False)
+    client_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+
+    def job_hash(self, execution: Execution) -> str:
+        job = execution.job
+        conf = execution.config
+        args: list[str] = [job.name, conf._project, conf._region, job.docker_image]
+        args += [job.namespace, conf._staging_bucket, conf.service_account or ""]
+        return hex_hash(*args)[:10]
+
+    def parent_name(self, execution: Execution) -> str:
+        conf = execution.config
+        return f"projects/{conf._project}/locations/{conf._region}"
+
+    def cloud_run_job_name(self, execution: Execution) -> str:
+        return f"{execution.job.full_name}-{self.job_hash(execution)}"
+
+    def full_cloud_run_job_name(self, execution: Execution) -> str:
+        return (
+            f"{self.parent_name(execution)}/jobs/{self.cloud_run_job_name(execution)}"
+        )
 
     @property
     def client(self) -> run_v2.JobsAsyncClient:
@@ -53,11 +74,8 @@ class CloudRunExecutor(ExecutorPort):
 
     async def get_job_list_cache(self, project, region) -> list[str]:
         key = JobListCacheKey(project, region)
-        if self.job_list_cache is not None:
-            if key in self.job_list_cache:
-                return self.job_list_cache[key]
-        else:
-            self.job_list_cache = {}
+        if key in self.job_list_cache:
+            return self.job_list_cache[key]
         logger.info(
             "Fetching Cloud Run Job list for %s/%s (to cache)...",
             project,
@@ -73,43 +91,43 @@ class CloudRunExecutor(ExecutorPort):
         return jobs
 
     def reset_job_list_cache(self, project, region):
-        if self.job_list_cache is None:
-            return
         key = JobListCacheKey(project, region)
         if key in self.job_list_cache:
             self.job_list_cache.pop(key)
 
     async def create_job_if_needed(self, execution: Execution):
-        job = cast(CloudRunSmartJob, execution.job)
+        job = execution.job
+        config = execution.config
         async with self.client_cache_lock:
-            job_list_cache = await self.get_job_list_cache(job.project, job.region)
-            if job._full_cloud_run_job_name in job_list_cache:
+            job_list_cache = await self.get_job_list_cache(
+                execution.config._project, execution.config._region
+            )
+            if self.full_cloud_run_job_name(execution) in job_list_cache:
                 # it already exists
                 logger.debug(
                     "Cloud Run Job: %s already exists => great!",
-                    job._full_cloud_run_job_name,
+                    self.full_cloud_run_job_name(execution),
                 )
                 return
             # it does not exist => let's create it
             volumes: list[run_v2.Volume] = []
             volume_mounts: list[run_v2.VolumeMount] = []
             launch_stage = "GA"
-            if job.staging_bucket_name:
-                volumes.append(
-                    run_v2.Volume(
-                        name="staging",
-                        gcs=run_v2.GCSVolumeSource(
-                            bucket=job.staging_bucket_name, read_only=False
-                        ),
-                    )
+            volumes.append(
+                run_v2.Volume(
+                    name="staging",
+                    gcs=run_v2.GCSVolumeSource(
+                        bucket=config._staging_bucket_name, read_only=False
+                    ),
                 )
-                volume_mounts.append(
-                    run_v2.VolumeMount(name="staging", mount_path="/staging")
-                )
-                launch_stage = "BETA"
+            )
+            volume_mounts.append(
+                run_v2.VolumeMount(name="staging", mount_path="/staging")
+            )
+            launch_stage = "BETA"
             request = run_v2.CreateJobRequest(
-                parent=job._parent_name,
-                job_id=job._cloud_run_job_name,
+                parent=self.parent_name(execution),
+                job_id=self.cloud_run_job_name(execution),
                 job=run_v2.Job(
                     labels={
                         "smartjob": "true",
@@ -119,7 +137,7 @@ class CloudRunExecutor(ExecutorPort):
                     template=run_v2.ExecutionTemplate(
                         task_count=1,
                         template=run_v2.TaskTemplate(
-                            max_retries=execution.max_attempts - 1,
+                            max_retries=config._retry_config._max_attempts_execute - 1,
                             execution_environment=run_v2.ExecutionEnvironment(
                                 run_v2.ExecutionEnvironment.EXECUTION_ENVIRONMENT_GEN2
                             ),
@@ -130,32 +148,36 @@ class CloudRunExecutor(ExecutorPort):
                                     resources=run_v2.ResourceRequirements(
                                         startup_cpu_boost=False,
                                         limits={
-                                            "cpu": job._cpuLimit,
-                                            "memory": job._memoryLimit,
+                                            "cpu": f"{config._cpu}",
+                                            "memory": f"{config._memory_gb}Gi",
                                         },
                                     ),
                                     volume_mounts=volume_mounts,
                                 )
                             ],
                             volumes=volumes,
-                            service_account=job.service_account,
+                            service_account=config.service_account,
                         ),
                     ),
                 ),
             )
             logger.info(
-                "Let's create a new Cloud Run Job: %s...", job._cloud_run_job_name
+                "Let's create a new Cloud Run Job: %s...",
+                self.cloud_run_job_name(execution),
             )
             operation = await self.client.create_job(request=request)
             await operation.result()
-            logger.debug("Done creating Cloud Run Job: %s", job._cloud_run_job_name)
-            self.reset_job_list_cache(job.project, job.region)
+            logger.debug(
+                "Done creating Cloud Run Job: %s", self.cloud_run_job_name(execution)
+            )
+            self.reset_job_list_cache(config._project, config._region)
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
-        job = cast(CloudRunSmartJob, execution.job)
+        job = execution.job
+        config = execution.config
         await self.create_job_if_needed(execution)
         request = run_v2.RunJobRequest(
-            name=job._full_cloud_run_job_name,
+            name=self.full_cloud_run_job_name(execution),
             overrides=run_v2.RunJobRequest.Overrides(
                 task_count=1,
                 # timeout=job.timeout_seconds,
@@ -173,15 +195,23 @@ class CloudRunExecutor(ExecutorPort):
         )
         logger.info(
             "Let's trigger a new execution of Cloud Run Job: %s...",
-            job._cloud_run_job_name,
+            self.cloud_run_job_name(execution),
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
             add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
-            timeout_s=job.timeout_seconds,
+            timeout_s=config._timeout_seconds,
         )
         operation = await self.client.run_job(request=request)
-        execution.log_url = operation.metadata.log_uri
-        return CloudRunExecutionResultFuture(operation.result(), execution=execution)
+        return CloudRunExecutionResultFuture(
+            operation.result(),
+            execution=execution,
+            storage_service=self.storage_service,
+            gcs_output_path=f"{config._staging_bucket}/{execution.output_relative_path}",
+            log_url=operation.metadata.log_uri,
+        )
 
-    def pre_schedule_checks(self, execution: Execution):
-        pass
+    def get_name(self) -> str:
+        return "cloudrun"
+
+    def staging_mount_path(self, execution: Execution) -> str:
+        return "/staging"
