@@ -3,7 +3,7 @@ import concurrent.futures
 from dataclasses import dataclass, field
 
 import docker
-from stlog import getLogger
+from stlog import LogContext, getLogger
 
 from smartjob.app.execution import Execution, ExecutionResult
 from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
@@ -43,13 +43,15 @@ class DockerExecutorAdapter(ExecutorPort):
 
     def sync_run(self, execution: Execution, container_id: str) -> ExecutionResult:
         docker_client = docker.DockerClient()
-        container = docker_client.containers.get(container_id)
-        container.start()
-        logger.info(f"Container {container.id} started")
-        res = container.wait()
-        return ExecutionResult._from_execution(
-            execution, res["StatusCode"] == 0, f"docker logs -f {container.id}"
-        )
+        with LogContext.bind(container_id=container_id):
+            container = docker_client.containers.get(container_id)
+            container.start()
+            logger.info("Container started")
+            res = container.wait()
+            logger.debug("Container stopped")
+            return ExecutionResult._from_execution(
+                execution, res["StatusCode"] == 0, f"docker logs -f {container.id}"
+            )
 
     def load_docker_image_if_needed(self, docker_image: str):
         docker_client = docker.DockerClient()
@@ -77,7 +79,8 @@ class DockerExecutorAdapter(ExecutorPort):
             volumes={"smartjob-staging": {"bind": "/staging", "mode": "rw"}},
             environment={k: v for k, v in execution.add_envs.items()},
         )
-        logger.info(f"Created container: id={container.id}, name={name}")
+        with LogContext.bind(container_id=container.id):
+            logger.info("Created container")
         future = loop.run_in_executor(
             self.executor, self.sync_run, execution, container.id
         )

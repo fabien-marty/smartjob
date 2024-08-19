@@ -260,6 +260,7 @@ class ExecutorService:
         self.update_execution_env(execution)
         await self.create_input_output_paths_if_needed(execution)
         await self.upload_python_script_if_needed_and_update_overridden_args(execution)
+        await self.upload_inputs(execution)
 
     async def _schedule(
         self,
