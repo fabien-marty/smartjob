@@ -33,6 +33,9 @@ jobs:
       - name: Run lint
         run: |
           make lint
+      - name: Run Tests
+        run: |
+          make test
       - name: Make docs
         run: |
           make doc
