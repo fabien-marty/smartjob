@@ -2,11 +2,15 @@ import asyncio
 
 import stlog
 
-from smartjob import CloudRunSmartJob, get_executor_service_singleton
+from smartjob import SmartJob, get_executor_service
+from smartjob.app.execution import ExecutionConfig
 from smartjob.app.executor import ExecutionResultFuture
 
 # Get a JobExecutorService object
-job_executor_service = get_executor_service_singleton(
+job_executor_service = get_executor_service(type="cloudrun")
+
+# Let's define an ExecutionConfig object
+execution_config = ExecutionConfig(
     project="your-gcp-project",
     region="us-east1",
     staging_bucket="gs://a-bucket-name",
@@ -15,7 +19,7 @@ job_executor_service = get_executor_service_singleton(
 
 async def main():
     # Let's define a Cloud Run job that runs a Python 3.12 container with the command "python --version"
-    job = CloudRunSmartJob(
+    job = SmartJob(
         name="foo", docker_image="python:3.12", overridden_args=["python", "--version"]
     )
 
@@ -23,7 +27,9 @@ async def main():
     futures: list[ExecutionResultFuture] = []
     for i in range(10):
         futures.append(
-            await job_executor_service.schedule(job, add_envs={"JOB_NUMBER": str(i)})
+            await job_executor_service.schedule(
+                job, execution_config=execution_config, add_envs={"JOB_NUMBER": str(i)}
+            )
         )
 
     # Let's print the log urls of the jobs

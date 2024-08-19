@@ -1,13 +1,17 @@
 import stlog
 
-from smartjob import CloudRunSmartJob, get_executor_service_singleton
+from smartjob import SmartJob, get_executor_service
+from smartjob.app.execution import ExecutionConfig
 from smartjob.app.input import LocalPathInput
 
 # Setup logging
 stlog.setup(level="INFO")
 
 # Get a JobExecutorService object
-job_executor_service = get_executor_service_singleton(
+job_executor_service = get_executor_service("cloudrun")
+
+# Let's define an ExecutionConfig object
+execution_config = ExecutionConfig(
     project="your-gcp-project",
     region="us-east1",
     staging_bucket="gs://a-bucket-name",
@@ -15,7 +19,7 @@ job_executor_service = get_executor_service_singleton(
 
 # Let's define a Cloud Run job that runs a local Python script
 # (that will be automatically uploaded) into a Python 3.12 container
-job = CloudRunSmartJob(
+job = SmartJob(
     name="foo", docker_image="python:3.12", python_script_path="./local_script2.py"
 )
 
@@ -26,7 +30,9 @@ job = CloudRunSmartJob(
 # './local_script2.py' is the local path to the input file (you want to send)
 # (here we are sending the same script as input)
 result = job_executor_service.sync_run(
-    job, inputs=[LocalPathInput("my-input-file", "./local_script2.py")]
+    job,
+    execution_config=execution_config,
+    inputs=[LocalPathInput("my-input-file", "./local_script2.py")],
 )
 
 # Let's print the execution result

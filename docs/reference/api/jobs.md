@@ -1,15 +1,11 @@
-# SmartJobs objects
+# SmartJob and ExecutionConfig objects
 
 At your user level, you have to manipulate two classes:
 
-- [smartjob.CloudRunSmartJob][] for creating jobs for executing with Cloud Run Jobs
-- [smartjob.VertexSmartJob][] for creating jobs for executing with Vertex AI CustomJobs
+- [smartjob.SmartJob][] to define jobs
+- [smartjob.ExecutionConfig][] to define "execution config" for running your jobs
 
-Both classes inherits from the [smartjob.SmartJob] abstract base class. 
-
-## SmartJob base class
-
-This is an abstract base class. **You don't have to manipulate it directly.**
+## SmartJob class
 
 ::: smartjob.SmartJob
     options:
@@ -17,20 +13,25 @@ This is an abstract base class. **You don't have to manipulate it directly.**
       heading_level: 3
 
 
-## CloudRun SmartJob class
+## ExecutionConfig class
 
 Create an instance of this class if you are targeting Cloud Run Jobs.
 
-::: smartjob.CloudRunSmartJob
+::: smartjob.ExecutionConfig
     options:
       show_root_heading: true
       heading_level: 3
 
-## Vertex SmartJob class
+### Dedicated class for defining "retries" in `ExecutionConfig`
 
-Create an instance of this class if you are targeting Vertex AI CustomJobs.
-
-::: smartjob.VertexSmartJob
+::: smartjob.RetryConfig
     options:
       show_root_heading: true
-      heading_level: 3
+      heading_level: 4
+
+### Dedicated class for defining "timeouts" in `ExecutionConfig`
+
+::: smartjob.TimeoutConfig
+    options:
+      show_root_heading: true
+      heading_level: 4
