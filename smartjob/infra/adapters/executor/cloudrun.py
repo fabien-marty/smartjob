@@ -28,14 +28,14 @@ class CloudRunExecutionResultFuture(GCPExecutionResultFuture):
             success = False
             castedResult = cast(run_v2.Execution, task_result)
             success = castedResult.succeeded_count > 0
-            return ExecutionResult.from_execution(
+            return ExecutionResult._from_execution(
                 self._execution, success, self.log_url
             )
         except gac_exceptions.GoogleAPICallError:
             pass
         except asyncio.CancelledError:
             self._execution.cancelled = True
-        return ExecutionResult.from_execution(self._execution, False, self.log_url)
+        return ExecutionResult._from_execution(self._execution, False, self.log_url)
 
 
 @dataclass
@@ -180,7 +180,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
             name=self.full_cloud_run_job_name(execution),
             overrides=run_v2.RunJobRequest.Overrides(
                 task_count=1,
-                # timeout=job.timeout_seconds,
+                # timeout=Duration(job.timeout_seconds), FIXME
                 container_overrides=[
                     run_v2.RunJobRequest.Overrides.ContainerOverride(
                         name="container-1",
@@ -199,14 +199,13 @@ class CloudRunExecutorAdapter(GCPExecutor):
             docker_image=job.docker_image,
             overridden_args=shlex.join(execution.overridden_args),
             add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
-            timeout_s=config._timeout_seconds,
+            timeout_s=config._timeout_config.timeout_seconds,
         )
         operation = await self.client.run_job(request=request)
         return CloudRunExecutionResultFuture(
             operation.result(),
             execution=execution,
             storage_service=self.storage_service,
-            gcs_output_path=f"{config._staging_bucket}/{execution.output_relative_path}",
             log_url=operation.metadata.log_uri,
         )
 

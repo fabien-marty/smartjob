@@ -26,20 +26,29 @@ class DummyExecutorAdapter(ExecutorPort):
 
     async def work(self, execution: Execution) -> ExecutionResult:
         await asyncio.sleep(self.sleep)
-        return ExecutionResult.from_execution(
+        return ExecutionResult._from_execution(
             execution, True, "https://no-log-url.com/sorry"
         )
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         return DummyExecutionResultFuture(
-            self.work(execution),
+            asyncio.create_task(self.work(execution)),
             execution,
             storage_service=self.storage_service,
             log_url="https://no-log-url.com/sorry",
         )
 
-    async def prepare(self, execution: Execution):
-        pass
-
     def get_name(self):
         return "dummy"
+
+    def get_input_path(self, execution: Execution) -> str:
+        return "/dummy"
+
+    def get_output_path(self, execution: Execution) -> str:
+        return "/dummy"
+
+    def get_storage_service(self) -> StorageService:
+        return self.storage_service
+
+    def staging_mount_path(self, execution: Execution) -> str:
+        return "/empty"

@@ -1,7 +1,7 @@
 from smartjob import SmartJob, get_executor_service
 from smartjob.app.execution import ExecutionConfig
 
-# Get a JobExecutorService object
+# Get a JobExecutorService object (for executing jobs with Cloud Run Jobs)
 job_executor_service = get_executor_service("cloudrun")
 
 # Let's define a Cloud Run job that runs a Python 3.12 container with the command "python --version"

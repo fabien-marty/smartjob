@@ -2,7 +2,7 @@
 
 ## The (mostly) unified way
 
-We try to keep a unified way of dealing with CloudRun jobs and Vertex AI custom jobs.
+We try to keep a unified way of dealing with CloudRun jobs, Vertex AI custom jobs and (local) Docker jobs.
 
 ### Concepts
 
@@ -17,10 +17,16 @@ We try to keep a unified way of dealing with CloudRun jobs and Vertex AI custom 
     - job args are overriden to execute the Python script *(instead of the default docker image command/arguments)*
 without rebuilding/pushing a whole docker image at each attempt
 
-- FIXME: threadpool (for uploading)
-
 ## CloudRun specifics 
+
+- we use a threadpool (default size: `10`) for concurrency but only for uploading/downloading files as the CloudRun API is fully async
 
 ## Vertex specifics
 
-- FIXME: threadpool
+- we use a threadpool (default size: `10`) for concurrency
+
+## (local) Docker specifics
+
+- we use a named volume `smartjob-staging` for "input"/"ouput" 
+- we use a container `smartjob-dummy-container` (based on `docker.io/alpine:latest` image) for copying files from/to the staging volume (the container is created but never started)
+- we use a threadpool (default size: `10`) for concurrency

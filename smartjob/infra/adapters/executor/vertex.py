@@ -106,7 +106,7 @@ class VertexExecutorAdapter(GCPExecutor):
         try:
             custom_job.submit(
                 disable_retries=True,
-                timeout=execution.config._timeout_seconds,
+                timeout=execution.config._timeout_config.timeout_seconds,
                 service_account=execution.config.service_account,
             )
             custom_job.resource_created.set()
@@ -115,18 +115,11 @@ class VertexExecutorAdapter(GCPExecutor):
             pass
         finally:
             custom_job.resource_created.set()
-        return ExecutionResult.from_execution(
+        return ExecutionResult._from_execution(
             execution,
             custom_job.success,
             custom_job._get_log_url(execution.config._project),
         )
-
-    # TODO: we can probably do this in a better way
-    async def _wait(self, future: asyncio.Future[ExecutionResult]) -> ExecutionResult:
-        while True:
-            if future.done():
-                return future.result()
-            await asyncio.sleep(1)
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         job = execution.job
@@ -163,10 +156,9 @@ class VertexExecutorAdapter(GCPExecutor):
         future = loop.run_in_executor(
             self.executor, self.sync_run, custom_job, execution
         )
-        async with asyncio.timeout(120):
-            log_url = await custom_job.get_log_url(execution.config._project)
+        log_url = await custom_job.get_log_url(execution.config._project)
         return VertexExecutionResultFuture(
-            self._wait(future),
+            asyncio.ensure_future(future),
             execution=execution,
             storage_service=self.storage_service,
             gcs_output_path=f"{config._staging_bucket}/{execution.output_relative_path}",

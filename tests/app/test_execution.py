@@ -59,7 +59,7 @@ def test_execution_result():
         job=SmartJob("foo", docker_image="python:3.12"),
         config=ExecutionConfig(),
     )
-    er = ExecutionResult.from_execution(exec, True, "https://nolog.com")
+    er = ExecutionResult._from_execution(exec, True, "https://nolog.com")
     assert er.success
     assert bool(er)
     assert len(str(er)) > 10

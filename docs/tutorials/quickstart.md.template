@@ -62,12 +62,12 @@ export SMARTJOB_PROJECT="your-gcp-project"
 export SMARTJOB_REGION="us-east1"
 export SMARTJOB_STAGING_BUCKET="gs://a-bucket-name" 
 
-smartjob cloudrun run --docker-image docker.io/python:3.12 --python-script-path ./local_script.py foo
+smartjob run --executor=cloudrun --docker-image docker.io/python:3.12 --python-script-path ./local_script.py foo
 ```
 
 And if we need more CPU/RAM to execute this job?
 
 ``` console
-smartjob cloudrun run --docker-image docker.io/python:3.12 --python-script-path ./local_script.py --cpu 2 --memory-gb 4 foo
+smartjob run --executor=cloudrun --docker-image docker.io/python:3.12 --python-script-path ./local_script.py --cpu 2 --memory-gb 4 foo
 ```
 

@@ -1,5 +1,7 @@
 # SmartJob inputs
 
+You can use these classes to defines inputs for your jobs.
+
 ## SmartJob base input class
 
 ::: smartjob.Input

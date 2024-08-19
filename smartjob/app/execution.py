@@ -9,10 +9,9 @@ from smartjob.app.exception import SmartJobException
 from smartjob.app.input import Input
 from smartjob.app.job import SmartJob
 from smartjob.app.retry import RetryConfig
+from smartjob.app.timeout import TimeoutConfig
 from smartjob.app.utils import unique_id
 
-# DEFAULT_TIMEOUT_SECONDS is the default timeout in seconds for jobs.
-DEFAULT_TIMEOUT_SECONDS = 3600
 DEFAULT_MACHINE_TYPE = "n1-standard-4"
 DEFAULT_ACCELERATOR_COUNT = 0
 DEFAULT_ACCELERATOR_TYPE = "ACCELERATOR_TYPE_UNSPECIFIED"
@@ -39,20 +38,20 @@ class ExecutionConfig:
     retry_config: RetryConfig | None = None
     """Retry configuration."""
 
+    timeout_config: TimeoutConfig | None = None
+    """Timeout configuration."""
+
     project: str | None = None
-    """GCP project."""
+    """GCP project (only for cloudrun/vertex executor)."""
 
     region: str | None = None
-    """GCP region."""
+    """GCP region (only for cloudrun/vertex executor)."""
 
     staging_bucket: str | None = None
-    """Staging bucket (for input, output and/or loading python_script_path."""
-
-    timeout_seconds: int | None = None
-    """"Timeout in seconds for the job execution."""
+    """Staging bucket (for input, output and/or loading python_script_path, only for cloudrun/vertex executor)."""
 
     service_account: str | None = None
-    """Service account (email) to use for the job execution."""
+    """Service account (email) to use for the job execution (only for cloudrun/vertex executor)."""
 
     cpu: float | None = None
     """Number of requested CPUs (only for cloudrun executor)."""
@@ -78,17 +77,18 @@ class ExecutionConfig:
     @property
     def _retry_config(self) -> RetryConfig:
         assert self.retry_config is not None
-        return self.retry_config or RetryConfig()
+        return self.retry_config
+
+    @property
+    def _timeout_config(self) -> TimeoutConfig:
+        assert self.timeout_config is not None
+        return self.timeout_config
 
     @property
     def _staging_bucket(self) -> str:
-        assert self.staging_bucket is not None
+        if self.staging_bucket is None:
+            return "dummy"
         return self.staging_bucket
-
-    @property
-    def _timeout_seconds(self) -> int:
-        assert self.timeout_seconds is not None
-        return self.timeout_seconds
 
     @property
     def _project(self) -> str:
@@ -102,9 +102,11 @@ class ExecutionConfig:
 
     @property
     def _staging_bucket_name(self) -> str:
-        assert self.staging_bucket is not None
-        assert self.staging_bucket.startswith("gs://")
-        return self.staging_bucket[5:]
+        if self.staging_bucket is None:
+            return "dummy"
+        if self.staging_bucket.startswith("gs://"):
+            return self.staging_bucket[5:]
+        return self.staging_bucket
 
     @property
     def _cpu(self) -> float:
@@ -141,7 +143,11 @@ class ExecutionConfig:
         assert self.boot_disk_size_gb is not None
         return self.boot_disk_size_gb
 
-    def fix_for_executor_name(self, executor_name: str):
+    def fix_timeout_config(self) -> None:
+        if self.timeout_config is None:
+            self.timeout_config = TimeoutConfig()
+
+    def fix_for_executor_name(self, executor_name: str) -> None:
         # Prechecks
         if executor_name == "cloudrun":
             for field_name in [
@@ -165,15 +171,20 @@ class ExecutionConfig:
                     )
             else:
                 self.retry_config = RetryConfig(max_attempts_execute=1)
+        elif executor_name == "docker":
+            self.staging_bucket = "smartjob-staging"  # we force this special value
+            if self.staging_bucket is not None:
+                logger.warning(
+                    "staging_bucket is not supported for docker executor => let's ignore it"
+                )
         # Default values
+        self.fix_timeout_config()
         if self.retry_config is None:
             self.retry_config = RetryConfig()
         if self.staging_bucket is None:
             self.staging_bucket = read_from_env("SMARTJOB_STAGING_BUCKET")
         if self.service_account is None:
             self.service_account = read_from_env("SMARTJOB_SERVICE_ACCOUNT")
-        if self.timeout_seconds is None:
-            self.timeout_seconds = DEFAULT_TIMEOUT_SECONDS
         if self.project is None:
             self.project = read_from_env("SMARTJOB_PROJECT")
         if self.region is None:
@@ -285,7 +296,7 @@ class ExecutionResult:
         return (self.stopped - self.created).seconds
 
     @classmethod
-    def from_execution(
+    def _from_execution(
         cls,
         execution: Execution,
         success: bool,

@@ -20,11 +20,10 @@ class DummyStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         await self._sleep()
         if self.keep_in_memory:
             self.data[destination_path] = content
-        return f"{destination_bucket}/{destination_path}"
 
     async def copy(
         self,
@@ -33,13 +32,12 @@ class DummyStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         await self._sleep()
         if self.keep_in_memory:
             self.data[destination_path] = (
                 f"copied from {source_bucket}/{source_path}".encode()
             )
-        return f"{destination_bucket}/{destination_path}"
 
     async def download(
         self,

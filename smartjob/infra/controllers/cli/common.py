@@ -77,7 +77,7 @@ AddEnvArgument = typer.Option(
 StagingBucketArgument = typer.Option(
     None,
     envvar="SMARTJOB_STAGING_BUCKET",
-    help="staging bucket (starting with gs://) for loading python_script_path",
+    help="staging bucket (starting with gs://) for loading python_script_path (cloudrun or vertex only)",
 )
 InputBucketBasePathArgument = typer.Option(
     None, envvar="SMARTJOB_INPUT_BUCKET_BASE_PATH"
@@ -102,5 +102,5 @@ LogLevelArgument = typer.Option("INFO", envvar="LOG_LEVEL", help="log level")
 ProjectArgument = typer.Option(None, envvar="SMARTJOB_PROJECT", help="GCP project")
 RegionArgument = typer.Option(None, envvar="SMARTJOB_REGION", help="GCP region")
 ExecutorArgument = typer.Option(
-    "cloudrun", help="executor type ('vertex' or 'cloudrun')"
+    "cloudrun", help="executor type ('vertex', 'cloudrun' or 'docker')"
 )

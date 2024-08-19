@@ -31,5 +31,5 @@ $ smartjob schedule --help
 
 !!! tip
 
-    You can define the executor type: `cloudrun` or `vertex` with the option `--executor`
+    You can define the executor type: `cloudrun`, `vertex` or `docker` with the option `--executor`
     (`cloudrun` will be used by default).

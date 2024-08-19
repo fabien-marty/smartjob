@@ -20,7 +20,7 @@ class GcsStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         if not destination_path:
             raise SmartJobException("destination_path is required")
         if not destination_bucket:
@@ -34,7 +34,6 @@ class GcsStorageAdapter(StoragePort):
             blob.upload_from_string(content, **kwargs, retry=None)
         except PreconditionFailed:
             pass
-        return f"gs://{destination_bucket}/{destination_path}"
 
     async def upload(
         self,
@@ -42,7 +41,7 @@ class GcsStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         cf_future = self.executor.submit(
             self.sync_upload,
             content,
@@ -50,7 +49,7 @@ class GcsStorageAdapter(StoragePort):
             destination_path,
             only_if_not_exists=only_if_not_exists,
         )
-        return await asyncio.wrap_future(cf_future)
+        await asyncio.wrap_future(cf_future)
 
     def sync_copy(
         self,
@@ -59,7 +58,7 @@ class GcsStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         kwargs: dict[str, Any] = {"retry": None}
         if only_if_not_exists:
             kwargs["if_generation_match"] = 0
@@ -67,7 +66,6 @@ class GcsStorageAdapter(StoragePort):
         source_blob = sb.blob(source_path)
         db = self.storage_client.bucket(destination_bucket)
         sb.copy_blob(source_blob, db, destination_path, **kwargs)
-        return f"gs://{destination_bucket}/{destination_path}"
 
     async def copy(
         self,
@@ -76,7 +74,7 @@ class GcsStorageAdapter(StoragePort):
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
-    ) -> str:
+    ):
         cf_future = self.executor.submit(
             self.sync_copy,
             source_bucket,
@@ -85,7 +83,7 @@ class GcsStorageAdapter(StoragePort):
             destination_path,
             only_if_not_exists=only_if_not_exists,
         )
-        return await asyncio.wrap_future(cf_future)
+        await asyncio.wrap_future(cf_future)
 
     def sync_download(
         self,

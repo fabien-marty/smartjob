@@ -8,10 +8,10 @@ class TimeoutConfig:
     timeout_seconds: int = 3600
     """FIXME"""
 
-    timeout_seconds_schedule: int | None = 600
+    timeout_seconds_schedule: int | None = None
     """FIXME"""
 
-    timeout_seconds_download: int | None = 600
+    timeout_seconds_download: int | None = None
     """FIXME"""
 
     @property
