@@ -84,9 +84,9 @@ def run(
     )
     return_code = 0
     if result:
-        print("SUCCESS in %i seconds" % (result.duration_seconds or -1))
+        print("SUCCESS in %i seconds" % result.duration_seconds)
     else:
-        print("FAILED in %i seconds" % (result.duration_seconds or -1))
+        print("FAILED in %i seconds" % result.duration_seconds)
         return_code = 2
     print("Id:      %s" % result.execution_id)
     print("Logs:    %s" % result.log_url)

@@ -101,7 +101,10 @@ class ExecutionResultFuture(ABC):
         """
         await self.__done_callback_called.wait()
         assert self.__result is not None
-        self.__result.json_output = await self._get_output_with_timeout_and_retries()
+        if self.__result.success:
+            self.__result.json_output = (
+                await self._get_output_with_timeout_and_retries()
+            )
         return self.__result
 
     def done(self) -> bool:

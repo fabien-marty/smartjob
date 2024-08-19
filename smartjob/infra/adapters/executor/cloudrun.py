@@ -203,7 +203,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
         )
         operation = await self.client.run_job(request=request)
         return CloudRunExecutionResultFuture(
-            operation.result(),
+            asyncio.create_task(operation.result()),
             execution=execution,
             storage_service=self.storage_service,
             log_url=operation.metadata.log_uri,
