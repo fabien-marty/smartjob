@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import shlex
 from dataclasses import dataclass, field
 
 from stlog import getLogger
@@ -163,20 +164,21 @@ class ExecutionConfig:
             for field_name in ["cpu", "memory_gb"]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for vertex executor")
-            if self.retry_config is not None:
-                if self.retry_config._max_attempts_execute != 1:
-                    self.retry_config.max_attempts_execute = 1
-                    logger.warning(
-                        "retry_config.max_attempts_execute if not supported for vertex executor => let's change the setting to 1"
-                    )
-            else:
-                self.retry_config = RetryConfig(max_attempts_execute=1)
         elif executor_name == "docker":
             self.staging_bucket = "smartjob-staging"  # we force this special value
             if self.staging_bucket is not None:
                 logger.warning(
                     "staging_bucket is not supported for docker executor => let's ignore it"
                 )
+        if executor_name in ("vertex", "docker"):
+            if self.retry_config is not None:
+                if self.retry_config._max_attempts_execute != 1:
+                    logger.warning(
+                        f"retry_config.max_attempts_execute if not supported for {executor_name} executor => let's change the setting to 1"
+                    )
+                    self.retry_config.max_attempts_execute = 1
+            else:
+                self.retry_config = RetryConfig(max_attempts_execute=1)
         # Default values
         self.fix_timeout_config()
         if self.retry_config is None:
@@ -241,6 +243,14 @@ class Execution:
     @property
     def output_relative_path(self) -> str:
         return f"{self.base_dir}/output"
+
+    @property
+    def add_envs_as_string(self) -> str:
+        return ", ".join([f"{x}={y}" for x, y in self.add_envs.items()])
+
+    @property
+    def overridden_args_as_string(self) -> str:
+        return shlex.join(self.overridden_args)
 
 
 @dataclass

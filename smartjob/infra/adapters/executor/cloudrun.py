@@ -1,11 +1,10 @@
 import asyncio
-import shlex
 from dataclasses import dataclass, field
 from typing import cast
 
 import google.api_core.exceptions as gac_exceptions
 from google.cloud import run_v2
-from stlog import getLogger
+from stlog import LogContext, getLogger
 
 from smartjob.app.execution import Execution, ExecutionResult
 from smartjob.app.executor import ExecutionResultFuture
@@ -77,9 +76,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
         if key in self.job_list_cache:
             return self.job_list_cache[key]
         logger.info(
-            "Fetching Cloud Run Job list for %s/%s (to cache)...",
-            project,
-            region,
+            "Fetching Cloud Run Job list (to cache)...", project=project, region=region
         )
         jobs = []
         req = run_v2.ListJobsRequest(parent=f"projects/{project}/locations/{region}")
@@ -104,10 +101,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
             )
             if self.full_cloud_run_job_name(execution) in job_list_cache:
                 # it already exists
-                logger.debug(
-                    "Cloud Run Job: %s already exists => great!",
-                    self.full_cloud_run_job_name(execution),
-                )
+                logger.debug("Cloud Run Job already exists => let's reuse it!")
                 return
             # it does not exist => let's create it
             volumes: list[run_v2.Volume] = []
@@ -161,53 +155,52 @@ class CloudRunExecutorAdapter(GCPExecutor):
                     ),
                 ),
             )
-            logger.info(
-                "Let's create a new Cloud Run Job: %s...",
-                self.cloud_run_job_name(execution),
-            )
+            logger.info("Let's create a new Cloud Run Job...")
             operation = await self.client.create_job(request=request)
             await operation.result()
-            logger.debug(
-                "Done creating Cloud Run Job: %s", self.cloud_run_job_name(execution)
-            )
+            logger.debug("Done creating Cloud Run Job")
             self.reset_job_list_cache(config._project, config._region)
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         job = execution.job
         config = execution.config
-        await self.create_job_if_needed(execution)
-        request = run_v2.RunJobRequest(
-            name=self.full_cloud_run_job_name(execution),
-            overrides=run_v2.RunJobRequest.Overrides(
-                task_count=1,
-                # timeout=Duration(job.timeout_seconds), FIXME
-                container_overrides=[
-                    run_v2.RunJobRequest.Overrides.ContainerOverride(
-                        name="container-1",
-                        args=execution.overridden_args,
-                        env=[
-                            run_v2.EnvVar(name=k, value=v)
-                            for k, v in execution.add_envs.items()
-                        ],
-                    )
-                ],
-            ),
-        )
-        logger.info(
-            "Let's trigger a new execution of Cloud Run Job: %s...",
-            self.cloud_run_job_name(execution),
-            docker_image=job.docker_image,
-            overridden_args=shlex.join(execution.overridden_args),
-            add_envs=", ".join([f"{x}={y}" for x, y in execution.add_envs.items()]),
-            timeout_s=config._timeout_config.timeout_seconds,
-        )
-        operation = await self.client.run_job(request=request)
-        return CloudRunExecutionResultFuture(
-            asyncio.create_task(operation.result()),
-            execution=execution,
-            storage_service=self.storage_service,
-            log_url=operation.metadata.log_uri,
-        )
+        job_id = self.cloud_run_job_name(execution)
+        full_name = self.full_cloud_run_job_name(execution)
+        with LogContext.bind(
+            cloudrun_job_id=job_id, project=config._project, region=config._region
+        ):
+            await self.create_job_if_needed(execution)
+            request = run_v2.RunJobRequest(
+                name=full_name,
+                overrides=run_v2.RunJobRequest.Overrides(
+                    task_count=1,
+                    # timeout=Duration(job.timeout_seconds), FIXME
+                    container_overrides=[
+                        run_v2.RunJobRequest.Overrides.ContainerOverride(
+                            name="container-1",
+                            args=execution.overridden_args,
+                            env=[
+                                run_v2.EnvVar(name=k, value=v)
+                                for k, v in execution.add_envs.items()
+                            ],
+                        )
+                    ],
+                ),
+            )
+            logger.info(
+                "Let's trigger a new execution of Cloud Run Job...",
+                docker_image=job.docker_image,
+                overridden_args=execution.add_envs_as_string,
+                add_envs=execution.overridden_args_as_string,
+                timeout_s=config._timeout_config.timeout_seconds,
+            )
+            operation = await self.client.run_job(request=request)
+            return CloudRunExecutionResultFuture(
+                asyncio.create_task(operation.result()),
+                execution=execution,
+                storage_service=self.storage_service,
+                log_url=operation.metadata.log_uri,
+            )
 
     def get_name(self) -> str:
         return "cloudrun"

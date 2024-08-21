@@ -2,7 +2,7 @@ import asyncio
 import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Coroutine
+from typing import Any, Coroutine
 
 from stlog import LogContext, getLogger
 from tenacity import AsyncRetrying, RetryError, stop_after_attempt, wait_exponential
@@ -39,6 +39,7 @@ class ExecutionResultFuture(ABC):
         self.__done_callback_called = asyncio.Event()
         self._storage_service = storage_service
         self.log_url = log_url
+        self._log_context: dict[str, Any] = {}
 
     def _cancel(self):
         if not self.__result and not self._execution.cancelled:
@@ -46,21 +47,27 @@ class ExecutionResultFuture(ABC):
             self.__task.cancel()
 
     async def _get_output(self) -> dict | list | str | int | float | bool | None:
-        logger.info("Downloading smartjob.json from output (if exists)...")
-        raw = await self._storage_service.download(
-            self._execution.config._staging_bucket_name,
-            f"{self._execution.output_relative_path}/smartjob.json",
-        )
-        if raw == b"":
-            logger.debug("No smartjob.json found in output")
-            return None
-        try:
-            res = json.loads(raw)
-            logger.debug("smartjob.json downloaded/decoded")
-            return res
-        except Exception:
-            logger.warning("smartjob.json is not a valid json")
-            return None
+        with LogContext.bind(**self._log_context):
+            staging_bucket_name = self._execution.config._staging_bucket_name
+            staging_bucket = self._execution.config._staging_bucket
+            smartjob_path = f"{self._execution.output_relative_path}/smartjob.json"
+            logger.info(
+                "Downloading smartjob.json from output (if exists)...",
+                path=f"{staging_bucket}/{smartjob_path}",
+            )
+            raw = await self._storage_service.download(
+                staging_bucket_name, smartjob_path
+            )
+            if raw == b"":
+                logger.debug("No smartjob.json found in output")
+                return None
+            try:
+                res = json.loads(raw)
+                logger.debug("smartjob.json downloaded/decoded")
+                return res
+            except Exception:
+                logger.warning("smartjob.json is not a valid json")
+                return None
 
     async def _get_output_with_timeout_and_retries(self):
         config = self._execution.config
@@ -121,21 +128,22 @@ class ExecutionResultFuture(ABC):
         pass
 
     def _task_done(self, future: asyncio.Future):
-        self.__result = self._get_result_from_future(future)
-        if not self._execution.cancelled:
-            if self.__result.success:
-                logger.info(
-                    "Smartjob execution succeeded",
-                    log_url=self.log_url,
-                    duration_seconds=self.__result.duration_seconds,
-                )
-            else:
-                logger.warn(
-                    "Smartjob execution failed",
-                    log_url=self.log_url,
-                    duration_seconds=self.__result.duration_seconds,
-                )
-        self.__done_callback_called.set()
+        with LogContext.bind(**self._log_context):
+            self.__result = self._get_result_from_future(future)
+            if not self._execution.cancelled:
+                if self.__result.success:
+                    logger.info(
+                        "Smartjob execution succeeded",
+                        log_url=self.log_url,
+                        duration_seconds=self.__result.duration_seconds,
+                    )
+                else:
+                    logger.warn(
+                        "Smartjob execution failed",
+                        log_url=self.log_url,
+                        duration_seconds=self.__result.duration_seconds,
+                    )
+            self.__done_callback_called.set()
 
 
 class ExecutorPort(ABC):
@@ -334,9 +342,11 @@ class ExecutorService:
                                     )
                                     logger.info(
                                         "Smartjob execution scheduled",
-                                        execution_id=fut.execution_id,
                                         log_url=fut.log_url,
                                     )
+                                    LogContext.remove("attempt")
+                                    LogContext.add(execution_id=fut.execution_id)
+                                    fut._log_context = LogContext.getall()
                                     return fut
                     except RetryError:
                         raise

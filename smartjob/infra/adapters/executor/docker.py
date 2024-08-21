@@ -41,12 +41,14 @@ class DockerExecutorAdapter(ExecutorPort):
         assert self._executor is not None
         return self._executor
 
-    def sync_run(self, execution: Execution, container_id: str) -> ExecutionResult:
+    def sync_run(
+        self, execution: Execution, container_id: str, log_context: dict
+    ) -> ExecutionResult:
         docker_client = docker.DockerClient()
-        with LogContext.bind(container_id=container_id):
+        with LogContext.bind(
+            **log_context
+        ):  # we need to rebind here as we are now in another thread
             container = docker_client.containers.get(container_id)
-            container.start()
-            logger.info("Container started")
             res = container.wait()
             logger.debug("Container stopped")
             return ExecutionResult._from_execution(
@@ -77,19 +79,31 @@ class DockerExecutorAdapter(ExecutorPort):
             command=execution.overridden_args,
             auto_remove=False,
             volumes={"smartjob-staging": {"bind": "/staging", "mode": "rw"}},
-            environment={k: v for k, v in execution.add_envs.items()},
+            environment=execution.add_envs,
         )
         with LogContext.bind(container_id=container.id):
-            logger.info("Created container")
-        future = loop.run_in_executor(
-            self.executor, self.sync_run, execution, container.id
-        )
-        return DockerExecutionResultFuture(
-            asyncio.ensure_future(future),
-            execution,
-            storage_service=self.storage_service,
-            log_url=f"docker logs -f {container.id}",
-        )
+            logger.info(
+                "Container created",
+                container_name=name,
+                image=job.docker_image,
+                command=execution.overridden_args_as_string,
+                env=execution.add_envs_as_string,
+            )
+            container.start()
+            logger.info("Container started")
+            future = loop.run_in_executor(
+                self.executor,
+                self.sync_run,
+                execution,
+                container.id,
+                LogContext.getall(),
+            )
+            return DockerExecutionResultFuture(
+                asyncio.ensure_future(future),
+                execution,
+                storage_service=self.storage_service,
+                log_url=f"docker logs -f {container.id}",
+            )
 
     def get_name(self):
         return "docker"
