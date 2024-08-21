@@ -48,6 +48,9 @@ class ExecutionConfig:
     region: str | None = None
     """GCP region (only for cloudrun/vertex executor)."""
 
+    labels: dict[str, str] | None = None
+    """GCP labels (only for cloudrun/vertex executor)."""
+
     staging_bucket: str | None = None
     """Staging bucket (for input, output and/or loading python_script_path, only for cloudrun/vertex executor)."""
 
@@ -79,6 +82,11 @@ class ExecutionConfig:
     def _retry_config(self) -> RetryConfig:
         assert self.retry_config is not None
         return self.retry_config
+
+    @property
+    def _labels(self) -> dict[str, str]:
+        assert self.labels is not None
+        return self.labels
 
     @property
     def _timeout_config(self) -> TimeoutConfig:
@@ -165,6 +173,18 @@ class ExecutionConfig:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for vertex executor")
         elif executor_name == "docker":
+            for field_name in [
+                "machine_type",
+                "accelerator_type",
+                "accelerator_count",
+                "boot_disk_type",
+                "boot_disk_size_gb",
+                "cpu",
+                "memory_gb",
+                "labels",
+            ]:
+                if getattr(self, field_name) is not None:
+                    logger.warning(f"{field_name} is ignored for docker executor")
             self.staging_bucket = "smartjob-staging"  # we force this special value
             if self.staging_bucket is not None:
                 logger.warning(
@@ -205,6 +225,8 @@ class ExecutionConfig:
             self.cpu = DEFAULT_CPU
         if self.memory_gb is None:
             self.memory_gb = DEFAULT_MEMORY_GB
+        if self.labels is None:
+            self.labels = {}
         # Post checks
         if executor_name in ("cloudrun", "vertex"):
             for field_name in ["staging_bucket", "project", "region"]:

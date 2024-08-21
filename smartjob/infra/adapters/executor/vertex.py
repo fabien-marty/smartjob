@@ -133,6 +133,7 @@ class VertexExecutorAdapter(GCPExecutor):
         ):
             custom_job = VertexCustomJob(
                 display_name=vertex_name,
+                labels=config._labels,
                 project=execution.config._project,
                 location=execution.config._region,
                 staging_bucket=execution.config._staging_bucket,
