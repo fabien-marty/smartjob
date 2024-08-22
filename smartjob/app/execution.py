@@ -274,6 +274,13 @@ class Execution:
     def overridden_args_as_string(self) -> str:
         return shlex.join(self.overridden_args)
 
+    @property
+    def labels(self) -> dict[str, str]:
+        return self.config._labels | {
+            "smartjob": "true",
+            "smartjob.namespace": self.job.namespace,
+        }
+
 
 @dataclass
 class ExecutionResult:

@@ -129,13 +129,9 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 parent=self.parent_name(execution),
                 job_id=self.cloud_run_job_name(execution),
                 job=run_v2.Job(
-                    labels={
-                        "smartjob": "true",
-                        "smartjob.namespace": job.namespace,
-                    },
+                    labels=execution.labels,
                     launch_stage=launch_stage,
                     template=run_v2.ExecutionTemplate(
-                        labels=config._labels,
                         task_count=1,
                         template=run_v2.TaskTemplate(
                             max_retries=config._retry_config._max_attempts_execute - 1,
