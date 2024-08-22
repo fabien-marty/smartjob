@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -49,7 +50,12 @@ class CloudRunExecutorAdapter(GCPExecutor):
         job = execution.job
         conf = execution.config
         args: list[str] = [job.name, conf._project, conf._region, job.docker_image]
-        args += [job.namespace, conf._staging_bucket, conf.service_account or ""]
+        args += [
+            job.namespace,
+            conf._staging_bucket,
+            conf.service_account or "",
+            json.dumps(conf.labels, sort_keys=True) if conf.labels else "",
+        ]
         return hex_hash(*args)[:10]
 
     def parent_name(self, execution: Execution) -> str:
@@ -129,6 +135,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
                     },
                     launch_stage=launch_stage,
                     template=run_v2.ExecutionTemplate(
+                        labels=config._labels,
                         task_count=1,
                         template=run_v2.TaskTemplate(
                             max_retries=config._retry_config._max_attempts_execute - 1,
