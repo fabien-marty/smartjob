@@ -178,7 +178,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 name=full_name,
                 overrides=run_v2.RunJobRequest.Overrides(
                     task_count=1,
-                    timeout=Duration(seconds=job.timeout_seconds),
+                    timeout=Duration(seconds=config._timeout_config.timeout_seconds),
                     container_overrides=[
                         run_v2.RunJobRequest.Overrides.ContainerOverride(
                             name="container-1",
@@ -194,8 +194,8 @@ class CloudRunExecutorAdapter(GCPExecutor):
             logger.info(
                 "Let's trigger a new execution of Cloud Run Job...",
                 docker_image=job.docker_image,
-                overridden_args=execution.add_envs_as_string,
-                add_envs=execution.overridden_args_as_string,
+                overridden_args=execution.overridden_args_as_string,
+                add_envs=execution.add_envs_as_string,
                 timeout_s=config._timeout_config.timeout_seconds,
             )
             operation = await self.client.run_job(request=request)

@@ -221,6 +221,14 @@ class ExecutorService:
             f"{self.adapter.staging_mount_path(execution)}/{destination_path}",
         ]
 
+    def replace_overridden_args_placeholders(self, execution: Execution):
+        input_path = (
+            f"{self.adapter.staging_mount_path(execution)}/{execution.base_dir}/input"
+        )
+        execution.overridden_args = [
+            x.replace("{{INPUT}}", input_path) for x in execution.overridden_args
+        ]
+
     async def upload_inputs(self, execution: Execution):
         async def _upload_input(input: Input):
             path = f"{execution.config._staging_bucket}/{execution.input_relative_path}/{input.filename}"
@@ -268,6 +276,7 @@ class ExecutorService:
         self.update_execution_env(execution)
         await self.create_input_output_paths_if_needed(execution)
         await self.upload_python_script_if_needed_and_update_overridden_args(execution)
+        self.replace_overridden_args_placeholders(execution)
         await self.upload_inputs(execution)
 
     async def _schedule(

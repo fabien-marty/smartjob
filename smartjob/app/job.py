@@ -29,12 +29,16 @@ class SmartJob:
     overridden_args: list[str] = field(default_factory=list)
     """Container arguments (including command) to use.
 
-    If not set, the default container image arguments will be used.
+    Notes:
+        - if not set, the default container image arguments will be used.
+        - the placeholder {{INPUT}} will be automatically replaced by the local full path of the input directory.
 
     """
 
     python_script_path: str = ""
-    """Local path to a python script to execute in the container."""
+    """Local path to a python script to execute in the container.
+
+    Note: if set, it will override overridden_args."""
 
     @property
     def full_name(self) -> str:
