@@ -5,6 +5,7 @@ from typing import cast
 
 import google.api_core.exceptions as gac_exceptions
 from google.cloud import run_v2
+from google.protobuf.duration_pb2 import Duration
 from stlog import LogContext, getLogger
 
 from smartjob.app.execution import Execution, ExecutionResult
@@ -177,7 +178,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 name=full_name,
                 overrides=run_v2.RunJobRequest.Overrides(
                     task_count=1,
-                    # timeout=Duration(job.timeout_seconds), FIXME
+                    timeout=Duration(seconds=job.timeout_seconds),
                     container_overrides=[
                         run_v2.RunJobRequest.Overrides.ContainerOverride(
                             name="container-1",
