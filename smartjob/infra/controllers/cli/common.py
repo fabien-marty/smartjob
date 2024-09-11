@@ -107,3 +107,6 @@ ExecutorArgument = typer.Option(
 ServiceAccountArgument = typer.Option(
     None, envvar="SMARTJOB_SERVICE_ACCOUNT", help="GCP service account to use"
 )
+MaxAttemptsArgument = typer.Option(
+    3, help="Number of attempts (if failure), must be >= 1"
+)

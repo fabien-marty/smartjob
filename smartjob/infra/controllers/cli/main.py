@@ -9,6 +9,7 @@ import typer.core
 from smartjob.app.execution import ExecutionConfig
 from smartjob.app.executor import ExecutionResultFuture
 from smartjob.app.job import SmartJob
+from smartjob.app.retry import RetryConfig
 from smartjob.infra.controllers.cli.common import (
     AddEnvArgument,
     CpuOption,
@@ -17,6 +18,7 @@ from smartjob.infra.controllers.cli.common import (
     GcsPathInputArguments,
     LocalPathInputArgument,
     LogLevelArgument,
+    MaxAttemptsArgument,
     MemoryOption,
     NameArgument,
     NamespaceArgument,
@@ -61,6 +63,7 @@ def run(
     region: str = RegionArgument,
     executor: str = ExecutorArgument,
     service_account: str = ServiceAccountArgument,
+    max_attempts: int = MaxAttemptsArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -80,6 +83,7 @@ def run(
         cpu=cpu,
         memory_gb=memory_gb,
         service_account=service_account,
+        retry_config=RetryConfig(max_attempts=max_attempts),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.sync_run(
@@ -123,10 +127,12 @@ def schedule(
     namespace: str = NamespaceArgument,
     project: str = ProjectArgument,
     region: str = RegionArgument,
-    typ: str = ExecutorArgument,
+    executor: str = ExecutorArgument,
+    service_account: str = ServiceAccountArgument,
+    max_attempts: int = MaxAttemptsArgument,
 ):
     init_stlog(log_level)
-    executor_service = get_executor_service(typ)
+    executor_service = get_executor_service(executor)
     add_envs = add_env_argument_to_dict(add_env)
     job = SmartJob(
         name=name,
@@ -142,6 +148,8 @@ def schedule(
         staging_bucket=staging_bucket,
         cpu=cpu,
         memory_gb=memory_gb,
+        service_account=service_account,
+        retry_config=RetryConfig(max_attempts=max_attempts),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result_future = asyncio.run(
