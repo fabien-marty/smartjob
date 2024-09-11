@@ -104,3 +104,6 @@ RegionArgument = typer.Option(None, envvar="SMARTJOB_REGION", help="GCP region")
 ExecutorArgument = typer.Option(
     "cloudrun", help="executor type ('vertex', 'cloudrun' or 'docker')"
 )
+ServiceAccountArgument = typer.Option(
+    None, envvar="SMARTJOB_SERVICE_ACCOUNT", help="GCP service account to use"
+)

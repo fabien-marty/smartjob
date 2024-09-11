@@ -24,6 +24,7 @@ from smartjob.infra.controllers.cli.common import (
     ProjectArgument,
     PythonScriptPathArgument,
     RegionArgument,
+    ServiceAccountArgument,
     StagingBucketArgument,
     add_env_argument_to_dict,
     gcs_input_to_list,
@@ -59,6 +60,7 @@ def run(
     project: str = ProjectArgument,
     region: str = RegionArgument,
     executor: str = ExecutorArgument,
+    service_account: str = ServiceAccountArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -77,6 +79,7 @@ def run(
         staging_bucket=staging_bucket,
         cpu=cpu,
         memory_gb=memory_gb,
+        service_account=service_account,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.sync_run(
