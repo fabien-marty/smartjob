@@ -110,3 +110,7 @@ ServiceAccountArgument = typer.Option(
 MaxAttemptsArgument = typer.Option(
     3, help="Number of attempts (if failure), must be >= 1"
 )
+VpcConnectorNetwork = typer.Option(None, help="VPC connector network (cloudrun only)")
+VpcConnectorSubNetwork = typer.Option(
+    None, help="VPC connector subnetwork (cloudrun only)"
+)

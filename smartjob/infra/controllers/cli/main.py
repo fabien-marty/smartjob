@@ -28,6 +28,8 @@ from smartjob.infra.controllers.cli.common import (
     RegionArgument,
     ServiceAccountArgument,
     StagingBucketArgument,
+    VpcConnectorNetwork,
+    VpcConnectorSubNetwork,
     add_env_argument_to_dict,
     gcs_input_to_list,
     init_stlog,
@@ -64,6 +66,8 @@ def run(
     executor: str = ExecutorArgument,
     service_account: str = ServiceAccountArgument,
     max_attempts: int = MaxAttemptsArgument,
+    vpc_connector_network: str = VpcConnectorNetwork,
+    vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -84,6 +88,8 @@ def run(
         memory_gb=memory_gb,
         service_account=service_account,
         retry_config=RetryConfig(max_attempts=max_attempts),
+        vpc_connector_network=vpc_connector_network,
+        vpc_connector_subnetwork=vpc_connector_subnetwork,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.sync_run(
@@ -130,6 +136,8 @@ def schedule(
     executor: str = ExecutorArgument,
     service_account: str = ServiceAccountArgument,
     max_attempts: int = MaxAttemptsArgument,
+    vpc_connector_network: str = VpcConnectorNetwork,
+    vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -150,6 +158,8 @@ def schedule(
         memory_gb=memory_gb,
         service_account=service_account,
         retry_config=RetryConfig(max_attempts=max_attempts),
+        vpc_connector_network=vpc_connector_network,
+        vpc_connector_subnetwork=vpc_connector_subnetwork,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result_future = asyncio.run(

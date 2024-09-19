@@ -78,6 +78,12 @@ class ExecutionConfig:
     boot_disk_size_gb: int | None = None
     """Boot disk size in Gb (only for vertex executor)."""
 
+    vpc_connector_network: str | None = None
+    """VPC connector network (only for cloudrun executor)."""
+
+    vpc_connector_subnetwork: str | None = None
+    """VPC connector subnetwork (only for cloudrun executor)."""
+
     @property
     def _retry_config(self) -> RetryConfig:
         assert self.retry_config is not None
@@ -169,7 +175,12 @@ class ExecutionConfig:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for cloudrun executor")
         elif executor_name == "vertex":
-            for field_name in ["cpu", "memory_gb"]:
+            for field_name in [
+                "cpu",
+                "memory_gb",
+                "vpc_connector_network",
+                "vpc_connector_subnetwork",
+            ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for vertex executor")
         elif executor_name == "docker":
@@ -182,6 +193,8 @@ class ExecutionConfig:
                 "cpu",
                 "memory_gb",
                 "labels",
+                "vpc_connector_network",
+                "vpc_connector_subnetwork",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for docker executor")
