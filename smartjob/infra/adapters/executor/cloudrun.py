@@ -126,6 +126,18 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 run_v2.VolumeMount(name="staging", mount_path="/staging")
             )
             launch_stage = "BETA"
+            vpc_access: run_v2.VpcAccess | None = None
+            if config.vpc_connector_network and config.vpc_connector_subnetwork:
+                vpc_access = run_v2.VpcAccess(
+                    egress=run_v2.VpcAccess.VpcEgress.PRIVATE_RANGES_ONLY,
+                    network_interfaces=[
+                        run_v2.VpcAccess.NetworkInterface(
+                            network=config.vpc_connector_network,
+                            subnetwork=config.vpc_connector_subnetwork,
+                        )
+                    ],
+                )
+
             request = run_v2.CreateJobRequest(
                 parent=self.parent_name(execution),
                 job_id=self.cloud_run_job_name(execution),
@@ -155,6 +167,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
                             ],
                             volumes=volumes,
                             service_account=config.service_account,
+                            vpc_access=vpc_access,
                         ),
                     ),
                 ),
