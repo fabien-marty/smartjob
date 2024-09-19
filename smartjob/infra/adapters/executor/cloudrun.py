@@ -6,6 +6,7 @@ from typing import cast
 import google.api_core.exceptions as gac_exceptions
 from google.cloud import run_v2
 from google.protobuf.duration_pb2 import Duration
+from grpc import StatusCode
 from stlog import LogContext, getLogger
 
 from smartjob.app.execution import Execution, ExecutionResult
@@ -41,11 +42,7 @@ class CloudRunExecutionResultFuture(GCPExecutionResultFuture):
 
 @dataclass
 class CloudRunExecutorAdapter(GCPExecutor):
-    job_list_cache: dict[JobListCacheKey, list[str]] = field(
-        default_factory=dict, init=False
-    )
     client_cache: run_v2.JobsAsyncClient | None = field(default=None, init=False)
-    client_cache_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
     def job_hash(self, execution: Execution) -> str:
         job = execution.job
@@ -78,105 +75,81 @@ class CloudRunExecutorAdapter(GCPExecutor):
             self.client_cache = run_v2.JobsAsyncClient()
         return self.client_cache
 
-    async def get_job_list_cache(self, project, region) -> list[str]:
-        key = JobListCacheKey(project, region)
-        if key in self.job_list_cache:
-            return self.job_list_cache[key]
-        logger.info(
-            "Fetching Cloud Run Job list (to cache)...", project=project, region=region
-        )
-        jobs = []
-        req = run_v2.ListJobsRequest(parent=f"projects/{project}/locations/{region}")
-        jobs_pager = await self.client.list_jobs(req)
-        async for existing_job in jobs_pager:
-            jobs.append(existing_job.name)
-        self.job_list_cache[key] = jobs
-        logger.info("%i existing Cloud Run Jobs found", len(jobs))
-        return jobs
-
-    def reset_job_list_cache(self, project, region):
-        key = JobListCacheKey(project, region)
-        if key in self.job_list_cache:
-            self.job_list_cache.pop(key)
-
-    async def create_job_if_needed(self, execution: Execution):
+    async def _create_job_if_needed(self, execution: Execution):
         job = execution.job
         config = execution.config
-        async with self.client_cache_lock:
-            job_list_cache = await self.get_job_list_cache(
-                execution.config._project, execution.config._region
-            )
-            if self.full_cloud_run_job_name(execution) in job_list_cache:
-                # it already exists
-                logger.debug("Cloud Run Job already exists => let's reuse it!")
-                return
-            # it does not exist => let's create it
-            volumes: list[run_v2.Volume] = []
-            volume_mounts: list[run_v2.VolumeMount] = []
-            launch_stage = "GA"
-            volumes.append(
-                run_v2.Volume(
-                    name="staging",
-                    gcs=run_v2.GCSVolumeSource(
-                        bucket=config._staging_bucket_name, read_only=False
-                    ),
-                )
-            )
-            volume_mounts.append(
-                run_v2.VolumeMount(name="staging", mount_path="/staging")
-            )
-            launch_stage = "BETA"
-            vpc_access: run_v2.VpcAccess | None = None
-            if config.vpc_connector_network and config.vpc_connector_subnetwork:
-                vpc_access = run_v2.VpcAccess(
-                    egress=run_v2.VpcAccess.VpcEgress.PRIVATE_RANGES_ONLY,
-                    network_interfaces=[
-                        run_v2.VpcAccess.NetworkInterface(
-                            network=config.vpc_connector_network,
-                            subnetwork=config.vpc_connector_subnetwork,
-                        )
-                    ],
-                )
-
-            request = run_v2.CreateJobRequest(
-                parent=self.parent_name(execution),
-                job_id=self.cloud_run_job_name(execution),
-                job=run_v2.Job(
-                    labels=execution.labels,
-                    launch_stage=launch_stage,
-                    template=run_v2.ExecutionTemplate(
-                        task_count=1,
-                        template=run_v2.TaskTemplate(
-                            max_retries=config._retry_config._max_attempts_execute - 1,
-                            execution_environment=run_v2.ExecutionEnvironment(
-                                run_v2.ExecutionEnvironment.EXECUTION_ENVIRONMENT_GEN2
-                            ),
-                            containers=[
-                                run_v2.Container(
-                                    name="container-1",
-                                    image=job.docker_image,
-                                    resources=run_v2.ResourceRequirements(
-                                        startup_cpu_boost=False,
-                                        limits={
-                                            "cpu": f"{config._cpu}",
-                                            "memory": f"{config._memory_gb}Gi",
-                                        },
-                                    ),
-                                    volume_mounts=volume_mounts,
-                                )
-                            ],
-                            volumes=volumes,
-                            service_account=config.service_account,
-                            vpc_access=vpc_access,
-                        ),
-                    ),
+        volumes: list[run_v2.Volume] = []
+        volume_mounts: list[run_v2.VolumeMount] = []
+        launch_stage = "GA"
+        volumes.append(
+            run_v2.Volume(
+                name="staging",
+                gcs=run_v2.GCSVolumeSource(
+                    bucket=config._staging_bucket_name, read_only=False
                 ),
             )
-            logger.info("Let's create a new Cloud Run Job...")
-            operation = await self.client.create_job(request=request)
-            await operation.result()
-            logger.debug("Done creating Cloud Run Job")
-            self.reset_job_list_cache(config._project, config._region)
+        )
+        volume_mounts.append(run_v2.VolumeMount(name="staging", mount_path="/staging"))
+        launch_stage = "BETA"
+        vpc_access: run_v2.VpcAccess | None = None
+        if config.vpc_connector_network and config.vpc_connector_subnetwork:
+            vpc_access = run_v2.VpcAccess(
+                egress=run_v2.VpcAccess.VpcEgress.PRIVATE_RANGES_ONLY,
+                network_interfaces=[
+                    run_v2.VpcAccess.NetworkInterface(
+                        network=config.vpc_connector_network,
+                        subnetwork=config.vpc_connector_subnetwork,
+                    )
+                ],
+            )
+
+        request = run_v2.CreateJobRequest(
+            parent=self.parent_name(execution),
+            job_id=self.cloud_run_job_name(execution),
+            job=run_v2.Job(
+                labels=execution.labels,
+                launch_stage=launch_stage,
+                template=run_v2.ExecutionTemplate(
+                    task_count=1,
+                    template=run_v2.TaskTemplate(
+                        max_retries=config._retry_config._max_attempts_execute - 1,
+                        execution_environment=run_v2.ExecutionEnvironment(
+                            run_v2.ExecutionEnvironment.EXECUTION_ENVIRONMENT_GEN2
+                        ),
+                        containers=[
+                            run_v2.Container(
+                                name="container-1",
+                                image=job.docker_image,
+                                resources=run_v2.ResourceRequirements(
+                                    startup_cpu_boost=False,
+                                    limits={
+                                        "cpu": f"{config._cpu}",
+                                        "memory": f"{config._memory_gb}Gi",
+                                    },
+                                ),
+                                volume_mounts=volume_mounts,
+                            )
+                        ],
+                        volumes=volumes,
+                        service_account=config.service_account,
+                        vpc_access=vpc_access,
+                    ),
+                ),
+            ),
+        )
+        logger.info("Let's create a new Cloud Run Job...")
+        operation = await self.client.create_job(request=request)
+        await operation.result()
+        logger.debug("Done creating Cloud Run Job")
+
+    async def create_job_if_needed(self, execution: Execution):
+        try:
+            await self._create_job_if_needed(execution)
+        except gac_exceptions.GoogleAPICallError as e:
+            if e.grpc_status_code != StatusCode.ALREADY_EXISTS:
+                raise
+            # we can ignore this
+            logger.debug("Done creating Cloud Run Job (already exists)")
 
     async def schedule(self, execution: Execution) -> ExecutionResultFuture:
         job = execution.job
