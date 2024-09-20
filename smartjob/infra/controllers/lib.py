@@ -1,7 +1,4 @@
 from smartjob.app.executor import ExecutorPort, ExecutorService
-from smartjob.infra.adapters.executor.cloudrun import CloudRunExecutorAdapter
-from smartjob.infra.adapters.executor.docker import DockerExecutorAdapter
-from smartjob.infra.adapters.executor.vertex import VertexExecutorAdapter
 
 # Default max workers for vertex executor and for file uploader (cloud run executor is not multi-threaded)
 DEFAULT_MAX_WORKERS = 10
@@ -26,10 +23,16 @@ def get_executor_service(
     """
     adapter: ExecutorPort
     if type == "cloudrun":
+        from smartjob.infra.adapters.executor.cloudrun import CloudRunExecutorAdapter
+
         adapter = CloudRunExecutorAdapter(max_workers=max_workers)
     elif type == "vertex":
+        from smartjob.infra.adapters.executor.vertex import VertexExecutorAdapter
+
         adapter = VertexExecutorAdapter(max_workers=max_workers)
     elif type == "docker":
+        from smartjob.infra.adapters.executor.docker import DockerExecutorAdapter
+
         adapter = DockerExecutorAdapter(max_workers=max_workers)
     else:
         raise ValueError(
