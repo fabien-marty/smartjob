@@ -18,6 +18,7 @@ from smartjob.infra.controllers.cli.common import (
     GcsPathInputArguments,
     LocalPathInputArgument,
     LogLevelArgument,
+    MachineOption,
     MaxAttemptsArgument,
     MemoryOption,
     NameArgument,
@@ -68,6 +69,7 @@ def run(
     max_attempts: int = MaxAttemptsArgument,
     vpc_connector_network: str = VpcConnectorNetwork,
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
+    machine_type: str = MachineOption,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -90,6 +92,7 @@ def run(
         retry_config=RetryConfig(max_attempts=max_attempts),
         vpc_connector_network=vpc_connector_network,
         vpc_connector_subnetwork=vpc_connector_subnetwork,
+        machine_type=machine_type,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.sync_run(
@@ -138,6 +141,7 @@ def schedule(
     max_attempts: int = MaxAttemptsArgument,
     vpc_connector_network: str = VpcConnectorNetwork,
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
+    machine_type: str = MachineOption,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -160,6 +164,7 @@ def schedule(
         retry_config=RetryConfig(max_attempts=max_attempts),
         vpc_connector_network=vpc_connector_network,
         vpc_connector_subnetwork=vpc_connector_subnetwork,
+        machine_type=machine_type,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result_future = asyncio.run(

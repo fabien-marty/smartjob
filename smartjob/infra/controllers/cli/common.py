@@ -61,6 +61,7 @@ def init_stlog(log_level: str):
 
 CpuOption = typer.Option(None, help="Number of CPUs (cloudrun only)")
 MemoryOption = typer.Option(None, help="Memory in Gb (cloudrun only)")
+MachineOption = typer.Option(None, help="Machine type (vertex only)")
 NamespaceArgument = typer.Option(
     DEFAULT_NAMESPACE, envvar="SMARTJOB_NAMESPACE", help="namespace (simple string)"
 )
