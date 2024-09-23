@@ -103,6 +103,15 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 ],
             )
 
+        logger.info("Let's check if Cloud Run Job already exists...")
+        request = run_v2.GetJobRequest(name=self.full_cloud_run_job_name(execution))
+        try:
+            await self.client.get_job(request=request)
+            logger.info("Done checking Cloud Run Job")
+            return
+        except Exception:
+            logger.info("Can't get the Cloud Run Job, let's create it!")
+
         request = run_v2.CreateJobRequest(
             parent=self.parent_name(execution),
             job_id=self.cloud_run_job_name(execution),
