@@ -115,3 +115,6 @@ VpcConnectorNetwork = typer.Option(None, help="VPC connector network (cloudrun o
 VpcConnectorSubNetwork = typer.Option(
     None, help="VPC connector subnetwork (cloudrun only)"
 )
+TimeoutSecondsArgument: int = typer.Option(
+    3600, help="No. of seconds before the job times out"
+)
