@@ -10,6 +10,7 @@ from smartjob.app.execution import ExecutionConfig
 from smartjob.app.executor import ExecutionResultFuture
 from smartjob.app.job import SmartJob
 from smartjob.app.retry import RetryConfig
+from smartjob.app.timeout import TimeoutConfig
 from smartjob.infra.controllers.cli.common import (
     AddEnvArgument,
     CpuOption,
@@ -29,6 +30,7 @@ from smartjob.infra.controllers.cli.common import (
     RegionArgument,
     ServiceAccountArgument,
     StagingBucketArgument,
+    TimeoutSecondsArgument,
     VpcConnectorNetwork,
     VpcConnectorSubNetwork,
     add_env_argument_to_dict,
@@ -70,6 +72,7 @@ def run(
     vpc_connector_network: str = VpcConnectorNetwork,
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
     machine_type: str = MachineOption,
+    timeout_seconds: int = TimeoutSecondsArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -93,6 +96,7 @@ def run(
         vpc_connector_network=vpc_connector_network,
         vpc_connector_subnetwork=vpc_connector_subnetwork,
         machine_type=machine_type,
+        timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.sync_run(
@@ -142,6 +146,7 @@ def schedule(
     vpc_connector_network: str = VpcConnectorNetwork,
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
     machine_type: str = MachineOption,
+    timeout_seconds: int = TimeoutSecondsArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -165,6 +170,7 @@ def schedule(
         vpc_connector_network=vpc_connector_network,
         vpc_connector_subnetwork=vpc_connector_subnetwork,
         machine_type=machine_type,
+        timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result_future = asyncio.run(
