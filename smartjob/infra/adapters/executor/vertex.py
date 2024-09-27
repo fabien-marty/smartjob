@@ -67,7 +67,11 @@ class VertexCustomJob(aiplatform.CustomJob):
 
 class VertexExecutionResultFuture(GCPExecutionResultFuture):
     def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
-        return future.result()
+        try:
+            return future.result()
+        except asyncio.CancelledError:
+            self._execution.cancelled = True
+        return ExecutionResult._from_execution(self._execution, False, self.log_url)
 
 
 @dataclass
