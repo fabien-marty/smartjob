@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 
@@ -18,20 +17,20 @@ def storage_service():
 
 def test_bytes_input(storage_service):
     input = BytesInput(filename="bar", content=b"foo")
-    asyncio.run(input._create("bucket", "path1/path2", storage_service))
+    input._create("bucket", "path1/path2", storage_service)
     assert storage_service.adapter.data["path1/path2/bar"] == b"foo"
 
 
 def test_json_input(storage_service):
     input = JsonInput(filename="jsonbar", content={"foo": "bar"})
-    asyncio.run(input._create("bucket", "path1/path2", storage_service))
+    input._create("bucket", "path1/path2", storage_service)
     res = json.loads(storage_service.adapter.data["path1/path2/jsonbar"])
     assert res["foo"] == "bar"
 
 
 def test_local_path_input(storage_service):
     input = LocalPathInput(filename="localbar", local_path=CURRENT_FILE)
-    asyncio.run(input._create("bucket", "path1/path2", storage_service))
+    input._create("bucket", "path1/path2", storage_service)
     content1 = storage_service.adapter.data["path1/path2/localbar"]
     with open(CURRENT_FILE, "rb") as f:
         content2 = f.read()
@@ -40,6 +39,6 @@ def test_local_path_input(storage_service):
 
 def test_gcs_input(storage_service):
     input = GcsInput(filename="gcs", gcs_path="gs://foo/bar")
-    asyncio.run(input._create("bucket", "path1/path2", storage_service))
+    input._create("bucket", "path1/path2", storage_service)
     content1 = storage_service.adapter.data["path1/path2/gcs"]
     assert content1 == b"copied from foo/bar"

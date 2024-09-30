@@ -23,7 +23,7 @@ job = SmartJob(
 )
 
 # Let's execute the job (and wait for the result) in a blocking synchronous way
-result = job_executor_service.sync_run(job, execution_config=execution_config)
+result = job_executor_service.run(job, execution_config=execution_config)
 
 # Let's print the execution result
 print(result)

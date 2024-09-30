@@ -15,7 +15,6 @@ from smartjob.app.executor import (
     ExecutorPort,
     SchedulingResult,
     _ExecutionResult,
-    _ExecutionResultFuture,
 )
 from smartjob.app.utils import hex_hash
 
@@ -183,7 +182,7 @@ class CloudRunExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, _ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
         job = execution.job
         config = execution.config
         job_id = self.cloud_run_job_name(execution)
@@ -225,8 +224,7 @@ class CloudRunExecutorAdapter(ExecutorPort):
             future = self.executor.submit(
                 self.wait, execution, operation, LogContext.getall()
             )
-            casted_future = cast(_ExecutionResultFuture, future)
-            return scheduling_result, casted_future
+            return scheduling_result, future
 
     def get_name(self) -> str:
         return "cloudrun"

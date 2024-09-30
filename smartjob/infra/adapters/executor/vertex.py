@@ -1,10 +1,8 @@
-import asyncio
 import concurrent.futures
 import logging
 import sys
 import threading
 from dataclasses import dataclass, field
-from typing import cast
 
 from google.cloud import aiplatform
 from google.cloud.aiplatform_v1.types import custom_job as custom_job_v1
@@ -13,15 +11,12 @@ from google.cloud.aiplatform_v1.types.env_var import EnvVar
 from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, MachineSpec
 from stlog import LogContext, getLogger
 
-from smartjob.app.execution import Execution, ExecutionResult
+from smartjob.app.execution import Execution
 from smartjob.app.executor import (
-    ExecutionResultFuture,
     ExecutorPort,
     SchedulingResult,
     _ExecutionResult,
-    _ExecutionResultFuture,
 )
-from smartjob.infra.adapters.executor.gcp import GCPExecutionResultFuture
 
 aiplatform_mutex = threading.Lock()
 aiplatform_initialized: bool = False
@@ -72,15 +67,6 @@ class VertexCustomJob(aiplatform.CustomJob):
         return self.state == gca_job_state.JobState.JOB_STATE_SUCCEEDED
 
 
-class VertexExecutionResultFuture(GCPExecutionResultFuture):
-    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
-        try:
-            return future.result()
-        except asyncio.CancelledError:
-            self._execution.cancelled = True
-        return ExecutionResult._from_execution(self._execution, False, self.log_url)
-
-
 @dataclass
 class VertexExecutorAdapter(ExecutorPort):
     max_workers: int = 10
@@ -89,7 +75,6 @@ class VertexExecutorAdapter(ExecutorPort):
     )
 
     def __post_init__(self):
-        super().__post_init__()
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_workers
         )
@@ -130,7 +115,7 @@ class VertexExecutorAdapter(ExecutorPort):
                 pass
             finally:
                 custom_job.resource_created.set()
-            return ExecutionResult._from_execution(
+            return _ExecutionResult._from_execution(
                 execution,
                 custom_job.success,
                 custom_job._get_log_url(execution.config._project),
@@ -138,10 +123,9 @@ class VertexExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
         job = execution.job
         config = execution.config
-        loop = asyncio.get_event_loop()
         vertex_name = f"{job.full_name}-{execution.id}"
         with LogContext.bind(
             vertex_name=vertex_name, project=config._project, region=config._region
@@ -178,8 +162,8 @@ class VertexExecutorAdapter(ExecutorPort):
                     )
                 ],
             )
-            future = loop.run_in_executor(
-                self.executor, self.sync_run, custom_job, execution, LogContext.getall()
+            future = self.executor.submit(
+                self.run, custom_job, execution, LogContext.getall()
             )
             log_url = custom_job.get_log_url(execution.config._project)
             sr = SchedulingResult._from_execution(
@@ -187,8 +171,7 @@ class VertexExecutorAdapter(ExecutorPort):
             )
             if forget:
                 return sr, None
-            casted_future = cast(_ExecutionResultFuture, future)
-            return sr, casted_future
+            return sr, future
 
     def staging_mount_path(self, execution: Execution) -> str:
         return f"/gcs/{execution.config._staging_bucket_name}"

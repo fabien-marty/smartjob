@@ -1,6 +1,5 @@
 import concurrent.futures
 from dataclasses import dataclass, field
-from typing import cast
 
 import docker
 from stlog import LogContext, getLogger
@@ -12,22 +11,14 @@ from smartjob.app.executor import (
     ExecutorPort,
     SchedulingResult,
     _ExecutionResult,
-    _ExecutionResultFuture,
 )
-from smartjob.app.storage import StorageService
-from smartjob.infra.adapters.storage.docker import DockerStorageAdapter
 
 logger = getLogger("smartjob.executor.docker")
-
-
-def make_storage_service() -> StorageService:
-    return StorageService(adapter=DockerStorageAdapter())
 
 
 @dataclass
 class DockerExecutorAdapter(ExecutorPort):
     sleep: float = 1.0
-    storage_service: StorageService = field(default_factory=make_storage_service)
     max_workers: int = 10
     _executor: concurrent.futures.ThreadPoolExecutor | None = field(
         default=None, init=False
@@ -70,7 +61,7 @@ class DockerExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, _ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
         docker_client = docker.DockerClient()
         job = execution.job
         name = f"{job.name}-{execution.id}"
@@ -101,14 +92,10 @@ class DockerExecutorAdapter(ExecutorPort):
             future = self.executor.submit(
                 self.wait, execution, container.id, LogContext.getall()
             )
-            casted_future = cast(_ExecutionResultFuture, future)
-            return scheduling_result, casted_future
+            return scheduling_result, future
 
     def get_name(self):
         return "docker"
-
-    def get_storage_service(self) -> StorageService:
-        return self.storage_service
 
     def staging_mount_path(self, execution: Execution) -> str:
         return "/staging"

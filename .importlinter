@@ -7,3 +7,23 @@ type=layers
 layers =
     smartjob.infra
     smartjob.app
+
+[importlinter:contract:2]
+name=Executor adapters does not know anything about storage
+type=forbidden
+source_modules =
+    smartjob.infra.adapters.executor
+forbidden_modules =
+    smartjob.infra.adapters.storage
+    smartjob.app.storage
+allow_indirect_imports = true
+
+[importlinter:contract:3]
+name=Storage does not know anything about executors
+type=forbidden
+source_modules =
+    smartjob.infra.adapters.storage
+    smartjob.app.storage
+forbidden_modules =
+    smartjob.infra.adapters.executor
+    smartjob.app.executor

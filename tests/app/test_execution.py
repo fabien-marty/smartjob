@@ -6,9 +6,9 @@ import pytest
 from smartjob.app.execution import (
     Execution,
     ExecutionConfig,
-    ExecutionResult,
     read_from_env,
 )
+from smartjob.app.executor import ExecutionResult
 from smartjob.app.job import SmartJob
 
 

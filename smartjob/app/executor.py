@@ -4,7 +4,6 @@ import json
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import cast
 
 from stlog import LogContext, getLogger
 from tenacity import (
@@ -186,45 +185,19 @@ class SchedulingResult:
         )
 
 
-class _ExecutionResultFuture(concurrent.futures.Future):
-    """Future for the result of a job execution.
-
-    Internal object returned by ExecutorPort. This is only a
-    concurrent.futures.Future but the result() method is casted
-    to return _ExecutionResult.
-
-    """
-
-    def result(self, timeout: float | None = None) -> _ExecutionResult:
-        """Return the result of the job as an _ExecutionResult object.
-
-        Args:
-            timeout: The number of seconds to wait for the result if the future
-                isn't done. If None, then there is no limit on the wait time.
-
-        Returns:
-            The result of the job execution.
-
-        """
-        res = super().result(timeout)
-        assert isinstance(res, _ExecutionResult)
-        typed_res = cast(_ExecutionResult, res)
-        return typed_res
-
-
-class ExecutionResultFuture(concurrent.futures.Future):
+class ExecutionResultFuture(concurrent.futures.Future[ExecutionResult]):
     def __init__(
         self,
         log_context: dict,
         storage_service: StorageService,
         execution: Execution,
-        future: _ExecutionResultFuture,
+        future: concurrent.futures.Future[_ExecutionResult],
     ):
         super().__init__()
+        self.set_running_or_notify_cancel()
         self._log_context = log_context
         self._storage_service = storage_service
         self._execution = execution
-        future.set_running_or_notify_cancel()
         future.add_done_callback(self._first_future_done)
         self._json_output: dict | list | str | int | float | bool | None = None
 
@@ -249,13 +222,13 @@ class ExecutionResultFuture(concurrent.futures.Future):
             logger.warning("smartjob.json is not a valid json")
             return None
 
-    def _get_output_and_set_result(self, future: concurrent.futures.Future):
+    def _get_output_and_set_result(
+        self, future: concurrent.futures.Future[ExecutionResult]
+    ):
         """Warning: executed in another thread."""
-        assert isinstance(future, _ExecutionResultFuture)
-        execution_result_future = cast(_ExecutionResultFuture, future)
         with LogContext.bind(**self._log_context):
             try:
-                result = execution_result_future.result()
+                result = future.result()
                 if result.success:
                     self._json_output = self._get_output()
                 self.set_result(
@@ -273,27 +246,6 @@ class ExecutionResultFuture(concurrent.futures.Future):
         except Exception as e:
             self.set_exception(e)
 
-    def result(self, timeout: float | None = None) -> ExecutionResult:
-        """Return the result of the job as an ExecutionResult object.
-
-        Args:
-            timeout: The number of seconds to wait for the result if the future
-                isn't done. If None, then there is no limit on the wait time.
-
-        Returns:
-            The result of the job.
-
-        """
-        res = super().result(timeout)
-        assert isinstance(res, ExecutionResult)
-        typed_res = cast(ExecutionResult, res)
-        return typed_res
-
-    @property
-    def execution_id(self) -> str:
-        "The execution unique identifier."
-        return self._execution.id
-
 
 class ExecutorPort(ABC):
     @abstractmethod
@@ -303,7 +255,7 @@ class ExecutorPort(ABC):
     @abstractmethod
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, _ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
         pass
 
     @abstractmethod
@@ -422,7 +374,7 @@ class ExecutorService:
         add_envs: dict[str, str] | None = None,
         inputs: list[Input] | None = None,
         forget: bool = False,
-    ) -> tuple[SchedulingResult, ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[ExecutionResult] | None]:
         execution = Execution(
             job,
             overridden_args=list(job.overridden_args),
@@ -453,7 +405,7 @@ class ExecutorService:
         inputs: list[Input] | None = None,
         execution_config: ExecutionConfig | None = None,
         forget: bool = False,
-    ) -> tuple[SchedulingResult, ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[ExecutionResult] | None]:
         """Schedule a job.
 
         Arguments:

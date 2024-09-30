@@ -1,14 +1,12 @@
 import concurrent.futures
 import time
 from dataclasses import dataclass, field
-from typing import cast
 
 from smartjob.app.execution import Execution
 from smartjob.app.executor import (
     ExecutorPort,
     SchedulingResult,
     _ExecutionResult,
-    _ExecutionResultFuture,
 )
 
 
@@ -38,15 +36,14 @@ class DummyExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, _ExecutionResultFuture | None]:
+    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
         sr = SchedulingResult._from_execution(
             execution, True, "https://no-log-url.com/sorry"
         )
         if forget:
             return sr, None
         future = self.executor.submit(self.wait, execution)
-        casted_future = cast(_ExecutionResultFuture, future)
-        return sr, casted_future
+        return sr, future
 
     def get_name(self):
         return "dummy"
