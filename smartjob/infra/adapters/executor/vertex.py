@@ -2,12 +2,13 @@ import concurrent.futures
 import logging
 import sys
 import threading
+import time
 from dataclasses import dataclass, field
 
 from google.cloud import aiplatform
 from google.cloud.aiplatform_v1.types import custom_job as custom_job_v1
-from google.cloud.aiplatform_v1.types import job_state as gca_job_state
 from google.cloud.aiplatform_v1.types.env_var import EnvVar
+from google.cloud.aiplatform_v1.types.job_state import JobState
 from google.cloud.aiplatform_v1.types.machine_resources import DiskSpec, MachineSpec
 from stlog import LogContext, getLogger
 
@@ -46,17 +47,12 @@ def init_aiplatform():
 class VertexCustomJob(aiplatform.CustomJob):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.resource_created = threading.Event()
 
     @property
     def id(self) -> str:
         return self.resource_name.split("/")[-1]
 
     def get_log_url(self, project) -> str:
-        self.resource_created.wait()
-        return self._get_log_url(project)
-
-    def _get_log_url(self, project) -> str:
         try:
             return f"https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{self.id}%22?project={project}"
         except Exception:
@@ -64,7 +60,7 @@ class VertexCustomJob(aiplatform.CustomJob):
 
     @property
     def success(self) -> bool:
-        return self.state == gca_job_state.JobState.JOB_STATE_SUCCEEDED
+        return self.state == JobState.JOB_STATE_SUCCEEDED
 
 
 @dataclass
@@ -87,44 +83,25 @@ class VertexExecutorAdapter(ExecutorPort):
     def init_aiplatform_if_needed(self):
         init_aiplatform()
 
-    def run(
+    def wait(
         self, custom_job: VertexCustomJob, execution: Execution, log_context: dict
     ) -> _ExecutionResult:
         """Note: executed in another thread."""
-        self.init_aiplatform_if_needed()
-        job = execution.job
         with LogContext.bind(
             **log_context
         ):  # we need to rebind here as we are now in another thread
-            logger.info(
-                "Let's trigger a new execution of Vertex Job...",
-                docker_image=job.docker_image,
-                overridden_args=execution.add_envs_as_string,
-                add_envs=execution.overridden_args_as_string,
-            )
-            try:
-                custom_job.submit(
-                    disable_retries=True,
-                    timeout=execution.config._timeout_config.timeout_seconds,
-                    service_account=execution.config.service_account,
-                )
-                custom_job.resource_created.set()
-                logger.debug("Resource created")
-                custom_job._block_until_complete()
-            except RuntimeError:
-                pass
-            finally:
-                custom_job.resource_created.set()
-            return _ExecutionResult._from_execution(
-                execution,
-                custom_job.success,
-                custom_job._get_log_url(execution.config._project),
-            )
+            custom_job._block_until_complete()
+        return _ExecutionResult._from_execution(
+            execution,
+            custom_job.success,
+            custom_job.get_log_url(execution.config._project),
+        )
 
     def schedule(
         self, execution: Execution, forget: bool
     ) -> tuple[SchedulingDetails, concurrent.futures.Future[_ExecutionResult] | None]:
         job = execution.job
+        self.init_aiplatform_if_needed()
         config = execution.config
         vertex_name = f"{job.full_name}-{execution.id}"
         with LogContext.bind(
@@ -162,14 +139,37 @@ class VertexExecutorAdapter(ExecutorPort):
                     )
                 ],
             )
-            future = self.executor.submit(
-                self.run, custom_job, execution, LogContext.getall()
+            logger.info(
+                "Let's trigger a new execution of Vertex Job...",
+                docker_image=job.docker_image,
+                overridden_args=execution.add_envs_as_string,
+                add_envs=execution.overridden_args_as_string,
             )
+            custom_job.submit(
+                disable_retries=True,
+                timeout=execution.config._timeout_config.timeout_seconds,
+                service_account=execution.config.service_account,
+            )
+            for _ in range(0, 5):
+                if custom_job.state not in [
+                    JobState.JOB_STATE_UNSPECIFIED,
+                    JobState.JOB_STATE_FAILED,
+                ]:
+                    break
+                time.sleep(1)
+            else:
+                raise Exception("Can't schedule the job (bad state after 5s)")
             log_url = custom_job.get_log_url(execution.config._project)
-            sd = SchedulingDetails(execution_id=execution.id, log_url=log_url)
+            logger.debug("Resource created")
+            scheduling_details = SchedulingDetails(
+                execution_id=execution.id, log_url=log_url
+            )
             if forget:
-                return sd, None
-            return sd, future
+                return scheduling_details, None
+            future = self.executor.submit(
+                self.wait, custom_job, execution, LogContext.getall()
+            )
+            return scheduling_details, future
 
     def staging_mount_path(self, execution: Execution) -> str:
         return f"/gcs/{execution.config._staging_bucket_name}"
