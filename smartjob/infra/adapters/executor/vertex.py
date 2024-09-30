@@ -53,10 +53,7 @@ class VertexCustomJob(aiplatform.CustomJob):
         return self.resource_name.split("/")[-1]
 
     def get_log_url(self, project) -> str:
-        try:
-            return f"https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{self.id}%22?project={project}"
-        except Exception:
-            return "https://no-log-url.com/sorry"
+        return f"https://console.cloud.google.com/logs/query;query=resource.labels.job_id%3D%22{self.id}%22?project={project}"
 
     @property
     def success(self) -> bool:
@@ -90,7 +87,10 @@ class VertexExecutorAdapter(ExecutorPort):
         with LogContext.bind(
             **log_context
         ):  # we need to rebind here as we are now in another thread
-            custom_job._block_until_complete()
+            try:
+                custom_job._block_until_complete()
+            except RuntimeError:
+                pass
         return _ExecutionResult._from_execution(
             execution,
             custom_job.success,
@@ -154,6 +154,10 @@ class VertexExecutorAdapter(ExecutorPort):
                 if custom_job.state not in [
                     JobState.JOB_STATE_UNSPECIFIED,
                     JobState.JOB_STATE_FAILED,
+                    JobState.JOB_STATE_QUEUED,
+                    JobState.JOB_STATE_CANCELLED,
+                    JobState.JOB_STATE_CANCELLING,
+                    JobState.JOB_STATE_EXPIRED,
                 ]:
                     break
                 time.sleep(1)

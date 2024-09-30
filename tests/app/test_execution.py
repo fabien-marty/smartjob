@@ -10,6 +10,7 @@ from smartjob.app.execution import (
 )
 from smartjob.app.executor import ExecutionResult
 from smartjob.app.job import SmartJob
+from smartjob.app.retry import RetryConfig
 
 
 @pytest.fixture()
@@ -39,7 +40,7 @@ def test_execution_config(setenvvar):
     assert empty._staging_bucket_name == "staging-bucket"
     assert empty._project == "project"
     assert empty._region == "region"
-    assert empty._retry_config.max_attempts == 3
+    assert empty._retry_config.max_attempts == 1
 
 
 def test_execution():

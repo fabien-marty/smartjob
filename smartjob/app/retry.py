@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class RetryConfig:
     """Retry configuration."""
 
-    max_attempts: int = 3
+    max_attempts: int = 1
     """FIXME"""
 
     max_attempts_schedule: int | None = None
