@@ -1,14 +1,16 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+# FIXME: timeouts
+
 
 class StoragePort(ABC):
     @abstractmethod
-    async def download(self, source_bucket: str, source_path: str) -> bytes:
+    def download(self, source_bucket: str, source_path: str) -> bytes:
         pass
 
     @abstractmethod
-    async def upload(
+    def upload(
         self,
         content: bytes | str,
         destination_bucket: str,
@@ -18,7 +20,7 @@ class StoragePort(ABC):
         pass
 
     @abstractmethod
-    async def copy(
+    def copy(
         self,
         source_bucket: str,
         source_path: str,
@@ -33,21 +35,21 @@ class StoragePort(ABC):
 class StorageService:
     adapter: StoragePort
 
-    async def download(self, source_bucket: str, source_path: str) -> bytes:
-        return await self.adapter.download(source_bucket, source_path)
+    def download(self, source_bucket: str, source_path: str) -> bytes:
+        return self.adapter.download(source_bucket, source_path)
 
-    async def upload(
+    def upload(
         self,
         content: bytes | str,
         destination_bucket: str,
         destination_path: str,
         only_if_not_exists: bool = True,
     ):
-        return await self.adapter.upload(
+        return self.adapter.upload(
             content, destination_bucket, destination_path, only_if_not_exists
         )
 
-    async def copy(
+    def copy(
         self,
         source_bucket: str,
         source_path: str,
@@ -55,7 +57,7 @@ class StorageService:
         destination_path: str,
         only_if_not_exists: bool = True,
     ):
-        return await self.adapter.copy(
+        return self.adapter.copy(
             source_bucket,
             source_path,
             destination_bucket,

@@ -1,4 +1,3 @@
-import asyncio
 import io
 import tarfile
 from dataclasses import dataclass, field
@@ -52,31 +51,29 @@ def read_from_container(
 class DockerStorageAdapter(StoragePort):
     docker_client: docker.DockerClient = field(default_factory=docker.DockerClient)
     mount_points_cache: dict[str, str] = field(default_factory=dict, init=False)
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
 
-    async def get_or_create_dummy_container_for_uploading_to_volumes(
+    def get_or_create_dummy_container_for_uploading_to_volumes(
         self,
     ) -> docker.models.containers.Container:
         # see https://github.com/moby/moby/issues/25245
-        async with self.lock:
-            staging_volume = self.get_or_create_staging_docker_volume()
-            try:
-                res = self.docker_client.containers.get("smartjob-dummy-container")
-                logger.debug("smartjob-dummy-container found => let's reuse it")
-                return res
-            except Exception:
-                pass
-            logger.debug("let's create smartjob-dummy-container")
-            try:
-                self.docker_client.images.get("docker.io/alpine:latest")
-            except Exception:
-                logger.debug("let's pull docker.io/alpine:latest image")
-                self.docker_client.images.pull("docker.io/alpine:latest")
-            return self.docker_client.containers.create(
-                image="docker.io/alpine:latest",
-                name="smartjob-dummy-container",
-                volumes={staging_volume.name: {"bind": "/staging", "mode": "rw"}},
-            )
+        staging_volume = self.get_or_create_staging_docker_volume()
+        try:
+            res = self.docker_client.containers.get("smartjob-dummy-container")
+            logger.debug("smartjob-dummy-container found => let's reuse it")
+            return res
+        except Exception:
+            pass
+        logger.debug("let's create smartjob-dummy-container")
+        try:
+            self.docker_client.images.get("docker.io/alpine:latest")
+        except Exception:
+            logger.debug("let's pull docker.io/alpine:latest image")
+            self.docker_client.images.pull("docker.io/alpine:latest")
+        return self.docker_client.containers.create(
+            image="docker.io/alpine:latest",
+            name="smartjob-dummy-container",
+            volumes={staging_volume.name: {"bind": "/staging", "mode": "rw"}},
+        )
 
     def get_or_create_staging_docker_volume(self) -> docker.models.volumes.Volume:
         for volume in self.docker_client.volumes.list():
@@ -87,11 +84,11 @@ class DockerStorageAdapter(StoragePort):
         logger.debug("let's create the smartjob-staging volume")
         return self.docker_client.volumes.create(name="smartjob-staging")
 
-    async def download(self, source_bucket: str, source_path: str) -> bytes:
-        dummy = await self.get_or_create_dummy_container_for_uploading_to_volumes()
+    def download(self, source_bucket: str, source_path: str) -> bytes:
+        dummy = self.get_or_create_dummy_container_for_uploading_to_volumes()
         return read_from_container(dummy, "/staging/" + source_path)
 
-    async def upload(
+    def upload(
         self,
         content: bytes | str,
         destination_bucket: str,
@@ -103,10 +100,10 @@ class DockerStorageAdapter(StoragePort):
             # this is a special case for bucket-like storage
             # let's just create an empty file
             destination_path = destination_path + ".empty"
-        dummy = await self.get_or_create_dummy_container_for_uploading_to_volumes()
+        dummy = self.get_or_create_dummy_container_for_uploading_to_volumes()
         copy_to_container(dummy, content, "/staging/" + destination_path)
 
-    async def copy(
+    def copy(
         self,
         source_bucket: str,
         source_path: str,

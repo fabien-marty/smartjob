@@ -1,54 +1,55 @@
-import asyncio
+import concurrent.futures
+import time
 from dataclasses import dataclass, field
+from typing import cast
 
-from smartjob.app.execution import Execution, ExecutionResult
-from smartjob.app.executor import ExecutionResultFuture, ExecutorPort
-from smartjob.app.storage import StorageService
-from smartjob.infra.adapters.storage.dummy import DummyStorageAdapter
-
-
-class DummyExecutionResultFuture(ExecutionResultFuture):
-    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
-        return future.result()
-
-    async def _get_output(self) -> dict | list | str | int | float | bool | None:
-        return None
-
-
-def make_storage_service() -> StorageService:
-    return StorageService(adapter=DummyStorageAdapter())
+from smartjob.app.execution import Execution
+from smartjob.app.executor import (
+    ExecutorPort,
+    SchedulingResult,
+    _ExecutionResult,
+    _ExecutionResultFuture,
+)
 
 
 @dataclass
 class DummyExecutorAdapter(ExecutorPort):
     sleep: float = 1.0
-    storage_service: StorageService = field(default_factory=make_storage_service)
+    max_workers: int = 10
+    _executor: concurrent.futures.ThreadPoolExecutor | None = field(
+        default=None, init=False
+    )
 
-    async def work(self, execution: Execution) -> ExecutionResult:
-        await asyncio.sleep(self.sleep)
-        return ExecutionResult._from_execution(
+    def __post_init__(self):
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers
+        )
+
+    @property
+    def executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        assert self._executor is not None
+        return self._executor
+
+    def wait(self, execution: Execution) -> _ExecutionResult:
+        time.sleep(self.sleep)
+        return _ExecutionResult._from_execution(
             execution, True, "https://no-log-url.com/sorry"
         )
 
-    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
-        return DummyExecutionResultFuture(
-            asyncio.create_task(self.work(execution)),
-            execution,
-            storage_service=self.storage_service,
-            log_url="https://no-log-url.com/sorry",
+    def schedule(
+        self, execution: Execution, forget: bool
+    ) -> tuple[SchedulingResult, _ExecutionResultFuture | None]:
+        sr = SchedulingResult._from_execution(
+            execution, True, "https://no-log-url.com/sorry"
         )
+        if forget:
+            return sr, None
+        future = self.executor.submit(self.wait, execution)
+        casted_future = cast(_ExecutionResultFuture, future)
+        return sr, casted_future
 
     def get_name(self):
         return "dummy"
-
-    def get_input_path(self, execution: Execution) -> str:
-        return "/dummy"
-
-    def get_output_path(self, execution: Execution) -> str:
-        return "/dummy"
-
-    def get_storage_service(self) -> StorageService:
-        return self.storage_service
 
     def staging_mount_path(self, execution: Execution) -> str:
         return "/empty"

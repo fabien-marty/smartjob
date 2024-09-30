@@ -1,4 +1,4 @@
-import asyncio
+import concurrent.futures
 
 import stlog
 
@@ -16,8 +16,9 @@ execution_config = ExecutionConfig(
     staging_bucket="gs://a-bucket-name",
 )
 
+if __name__ == "__main__":
+    stlog.setup(level="INFO")  # setup a better logging
 
-async def main():
     # Let's define a Cloud Run job that runs a Python 3.12 container with the command "python --version"
     job = SmartJob(
         name="foo", docker_image="python:3.12", overridden_args=["python", "--version"]
@@ -27,7 +28,7 @@ async def main():
     futures: list[ExecutionResultFuture] = []
     for i in range(10):
         futures.append(
-            await job_executor_service.schedule(
+            job_executor_service.schedule(
                 job, execution_config=execution_config, add_envs={"JOB_NUMBER": str(i)}
             )
         )
@@ -38,13 +39,8 @@ async def main():
 
     # Let's wait for all the results
     # (this is blocking until all the jobs are done)
-    results = await asyncio.gather(*[future.result() for future in futures])
+    results, _ = concurrent.futures.wait(futures)
 
     # Let's print the execution results for each job
     for result in results:
         print(f"Job: {result.execution_id} => {result.success}")
-
-
-if __name__ == "__main__":
-    stlog.setup(level="INFO")  # setup a better logging
-    asyncio.run(main())
