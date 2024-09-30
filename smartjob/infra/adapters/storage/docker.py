@@ -49,7 +49,9 @@ def read_from_container(
 
 @dataclass
 class DockerStorageAdapter(StoragePort):
-    docker_client: docker.DockerClient = field(default_factory=docker.DockerClient)
+    docker_client: docker.DockerClient = field(
+        init=False, default_factory=docker.DockerClient
+    )
     mount_points_cache: dict[str, str] = field(default_factory=dict, init=False)
 
     def get_or_create_dummy_container_for_uploading_to_volumes(

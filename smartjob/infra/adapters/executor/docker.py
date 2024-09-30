@@ -9,7 +9,7 @@ from smartjob.app.execution import (
 )
 from smartjob.app.executor import (
     ExecutorPort,
-    SchedulingResult,
+    SchedulingDetails,
     _ExecutionResult,
 )
 
@@ -18,7 +18,6 @@ logger = getLogger("smartjob.executor.docker")
 
 @dataclass
 class DockerExecutorAdapter(ExecutorPort):
-    sleep: float = 1.0
     max_workers: int = 10
     _executor: concurrent.futures.ThreadPoolExecutor | None = field(
         default=None, init=False
@@ -61,7 +60,7 @@ class DockerExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[_ExecutionResult] | None]:
         docker_client = docker.DockerClient()
         job = execution.job
         name = f"{job.name}-{execution.id}"
@@ -84,15 +83,15 @@ class DockerExecutorAdapter(ExecutorPort):
             )
             container.start()
             logger.info("Container started")
-            scheduling_result = SchedulingResult._from_execution(
-                execution, success=True, log_url=f"docker logs -f {container.id}"
+            scheduling_details = SchedulingDetails(
+                execution_id=execution.id, log_url=f"docker logs -f {container.id}"
             )
             if forget:
-                return scheduling_result, None
+                return scheduling_details, None
             future = self.executor.submit(
                 self.wait, execution, container.id, LogContext.getall()
             )
-            return scheduling_result, future
+            return scheduling_details, future
 
     def get_name(self):
         return "docker"

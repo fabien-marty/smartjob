@@ -42,18 +42,6 @@ class _ExecutionResult:
     def __bool__(self) -> bool:
         return self.success or False
 
-    def __str__(self) -> str:
-        if self.success:
-            state = "SUCCESS"
-        else:
-            state = "FAILURE"
-        res = f"""ExecutionResult(
-    job_name={self.job_name}, job_namespace={self.job_namespace},
-    execution_id={self.execution_id},
-    state={state}, duration_seconds={self.duration_seconds}
-)"""
-        return res
-
     @property
     def duration_seconds(self) -> int:
         """The duration of the job in seconds."""
@@ -132,11 +120,10 @@ class ExecutionResult(_ExecutionResult):
 
 
 @dataclass
-class SchedulingResult:
-    """SchedulingResult is the result of a job scheduling (not its execution!).
+class SchedulingDetails:
+    """SchedulingDetails holds some data/details about the scheduling of a job.
 
     Attributes:
-        success: Whether the scheduling has succeeded or not.
         created: The datetime when the job has started.
         execution_id: The execution id of the job.
         job_name: The name of the job.
@@ -145,44 +132,12 @@ class SchedulingResult:
 
     """
 
-    success: bool
-    created: datetime.datetime
+    scheduled_date: datetime.datetime = field(
+        init=False,
+        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc),
+    )
     execution_id: str
-    job_name: str
-    job_namespace: str
     log_url: str
-
-    def __bool__(self) -> bool:
-        return self.success or False
-
-    def __str__(self) -> str:
-        if self.success:
-            state = "SUCCESS"
-        else:
-            state = "FAILURE"
-        res = f"""SchedulingResult(
-    job_name={self.job_name}, job_namespace={self.job_namespace},
-    execution_id={self.execution_id},
-    state={state}
-)"""
-        return res
-
-    @classmethod
-    def _from_execution(
-        cls,
-        execution: Execution,
-        success: bool,
-        log_url: str,
-    ) -> "SchedulingResult":
-        """Create a SchedulingResult from a SmartJobExecution."""
-        return cls(
-            created=execution.created,
-            execution_id=execution.id,
-            job_name=execution.job.name,
-            job_namespace=execution.job.namespace,
-            success=success,
-            log_url=log_url,
-        )
 
 
 class ExecutionResultFuture(concurrent.futures.Future[ExecutionResult]):
@@ -255,7 +210,7 @@ class ExecutorPort(ABC):
     @abstractmethod
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[_ExecutionResult] | None]:
         pass
 
     @abstractmethod
@@ -272,18 +227,18 @@ class ExecutorService:
     def __post_init__(self):
         self.executor_name = self.adapter.get_name()
 
-    def get_input_path(self, execution: Execution) -> str:
+    def _get_input_path(self, execution: Execution) -> str:
         return f"{self.adapter.staging_mount_path(execution)}/{execution.input_relative_path}"
 
-    def get_output_path(self, execution: Execution) -> str:
+    def _get_output_path(self, execution: Execution) -> str:
         return f"{self.adapter.staging_mount_path(execution)}/{execution.output_relative_path}"
 
-    def update_execution_env(self, execution: Execution):
-        execution.add_envs["INPUT_PATH"] = self.get_input_path(execution)
-        execution.add_envs["OUTPUT_PATH"] = self.get_output_path(execution)
+    def _update_execution_env(self, execution: Execution):
+        execution.add_envs["INPUT_PATH"] = self._get_input_path(execution)
+        execution.add_envs["OUTPUT_PATH"] = self._get_output_path(execution)
         execution.add_envs["EXECUTION_ID"] = execution.id
 
-    def upload_python_script_if_needed_and_update_overridden_args(
+    def _upload_python_script_if_needed_and_update_overridden_args(
         self, execution: Execution
     ):
         job = execution.job
@@ -314,7 +269,7 @@ class ExecutorService:
             f"{self.adapter.staging_mount_path(execution)}/{destination_path}",
         ]
 
-    def replace_overridden_args_placeholders(self, execution: Execution):
+    def _replace_overridden_args_placeholders(self, execution: Execution):
         input_path = (
             f"{self.adapter.staging_mount_path(execution)}/{execution.base_dir}/input"
         )
@@ -332,12 +287,12 @@ class ExecutorService:
         )
         logger.debug(f"Done uploading input: {path}")
 
-    def upload_inputs(self, execution: Execution):
+    def _upload_inputs(self, execution: Execution):
         inputs = execution.inputs
         for input in inputs:
             self._upload_input(execution, input)
 
-    def create_input_output_paths_if_needed(self, execution: Execution):
+    def _create_input_output_paths_if_needed(self, execution: Execution):
         logger.info(
             "Creating input path %s/%s/...",
             execution.config._staging_bucket,
@@ -360,12 +315,12 @@ class ExecutorService:
         )
         logger.debug("Done creating input/output paths")
 
-    def prepare(self, execution: Execution):
-        self.update_execution_env(execution)
-        self.create_input_output_paths_if_needed(execution)
-        self.upload_python_script_if_needed_and_update_overridden_args(execution)
-        self.replace_overridden_args_placeholders(execution)
-        self.upload_inputs(execution)
+    def _prepare(self, execution: Execution):
+        self._update_execution_env(execution)
+        self._create_input_output_paths_if_needed(execution)
+        self._upload_python_script_if_needed_and_update_overridden_args(execution)
+        self._replace_overridden_args_placeholders(execution)
+        self._upload_inputs(execution)
 
     def _schedule(
         self,
@@ -374,7 +329,7 @@ class ExecutorService:
         add_envs: dict[str, str] | None = None,
         inputs: list[Input] | None = None,
         forget: bool = False,
-    ) -> tuple[SchedulingResult, concurrent.futures.Future[ExecutionResult] | None]:
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[ExecutionResult] | None]:
         execution = Execution(
             job,
             overridden_args=list(job.overridden_args),
@@ -384,7 +339,7 @@ class ExecutorService:
         )
         with LogContext.bind(execution_id=execution.id):
             logger.info("Preparing the smartjob execution...")
-            self.prepare(execution)
+            self._prepare(execution)
             logger.debug("Smartjob execution prepared")
             logger.info("Scheduling the smartjob execution...")
             scheduling_result, future_or_none = self.adapter.schedule(execution, forget)
@@ -405,17 +360,28 @@ class ExecutorService:
         inputs: list[Input] | None = None,
         execution_config: ExecutionConfig | None = None,
         forget: bool = False,
-    ) -> tuple[SchedulingResult, concurrent.futures.Future[ExecutionResult] | None]:
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[ExecutionResult] | None]:
         """Schedule a job.
+
+        This method returns when the job is scheduled (not when it is finished!).
+
+        If we can't schedule the job an exception is raised.
+
+        If forget=False (default), we return a first object about scheduling details
+        and a second object about the future result of the job execution.
+
+        If forget=True, we return only the first object about scheduling details
+        (and None for the second one).
 
         Arguments:
             job: The job to run.
             add_envs: Environment variables to add for this particular execution.
             inputs: Inputs to add for this particular execution.
             execution_config: Execution configuration.
+            forget: if True, don't return a future on ExecutionResult (but None).
 
         Returns:
-            The result of the job scheduling.
+            The result of the job scheduling and (optionally) a future object about the result of the job execution.
 
         """
         execution_config = execution_config or ExecutionConfig()
@@ -475,15 +441,13 @@ class ExecutorService:
         """
         execution_config = execution_config or ExecutionConfig()
         execution_config.fix_timeout_config()
-        schedule_result, execution_result = self.schedule(
+        _, execution_result = self.schedule(
             job,
             add_envs=add_envs,
             inputs=inputs,
             execution_config=execution_config,
             forget=False,
         )
-        if not schedule_result.success:
-            raise Exception("Job scheduling failed")
         assert execution_result is not None  # Can't be None because forget=False
         result = execution_result.result()  # FIXME: timeout
         return result

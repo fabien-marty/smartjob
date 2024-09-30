@@ -4,7 +4,7 @@ from smartjob.app.executor import (
     ExecutionResult,
     ExecutionResultFuture,
     ExecutorService,
-    SchedulingResult,
+    SchedulingDetails,
 )
 from smartjob.app.input import BytesInput, GcsInput, Input, JsonInput, LocalPathInput
 from smartjob.app.job import SmartJob
@@ -19,7 +19,7 @@ __all__ = [
     "SmartJob",
     "ExecutorService",
     "ExecutionResult",
-    "SchedulingResult",
+    "SchedulingDetails",
     "ExecutionResultFuture",
     "Input",
     "JsonInput",

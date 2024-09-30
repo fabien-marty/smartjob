@@ -14,7 +14,7 @@ from stlog import LogContext, getLogger
 from smartjob.app.execution import Execution
 from smartjob.app.executor import (
     ExecutorPort,
-    SchedulingResult,
+    SchedulingDetails,
     _ExecutionResult,
 )
 
@@ -123,7 +123,7 @@ class VertexExecutorAdapter(ExecutorPort):
 
     def schedule(
         self, execution: Execution, forget: bool
-    ) -> tuple[SchedulingResult, concurrent.futures.Future[_ExecutionResult] | None]:
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[_ExecutionResult] | None]:
         job = execution.job
         config = execution.config
         vertex_name = f"{job.full_name}-{execution.id}"
@@ -166,12 +166,10 @@ class VertexExecutorAdapter(ExecutorPort):
                 self.run, custom_job, execution, LogContext.getall()
             )
             log_url = custom_job.get_log_url(execution.config._project)
-            sr = SchedulingResult._from_execution(
-                execution, success=True, log_url=log_url
-            )
+            sd = SchedulingDetails(execution_id=execution.id, log_url=log_url)
             if forget:
-                return sr, None
-            return sr, future
+                return sd, None
+            return sd, future
 
     def staging_mount_path(self, execution: Execution) -> str:
         return f"/gcs/{execution.config._staging_bucket_name}"
