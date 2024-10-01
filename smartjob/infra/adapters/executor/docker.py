@@ -48,10 +48,14 @@ class DockerExecutorAdapter(ExecutorPort):
     ) -> _ExecutionResult:
         """Note: executed in another thread."""
         with LogContext.bind(**log_context):
-            docker_client = docker.DockerClient()
-            container = docker_client.containers.get(container_id)
-            res = container.wait()
-            logger.debug("Container stopped")
+            try:
+                docker_client = docker.DockerClient()
+                container = docker_client.containers.get(container_id)
+                res = container.wait()
+                logger.debug("Container stopped")
+            except Exception:
+                logger.debug("exception catched during wait()", exc_info=True)
+                pass
             return _ExecutionResult._from_execution(
                 execution,
                 success=res["StatusCode"] == 0,

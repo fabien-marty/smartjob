@@ -89,8 +89,8 @@ class VertexExecutorAdapter(ExecutorPort):
         ):  # we need to rebind here as we are now in another thread
             try:
                 custom_job._block_until_complete()
-            except RuntimeError:
-                pass
+            except Exception:
+                logger.debug("exception catched during wait()", exc_info=True)
         return _ExecutionResult._from_execution(
             execution,
             custom_job.success,

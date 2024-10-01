@@ -168,14 +168,13 @@ class CloudRunExecutorAdapter(ExecutorPort):
         with LogContext.bind(**log_context):
             try:
                 task_result = operation.result()
-                success = False
                 castedResult = cast(run_v2.Execution, task_result)
                 success = castedResult.succeeded_count > 0
                 return _ExecutionResult._from_execution(
                     execution, success, operation.metadata.log_uri
                 )
-            except gac_exceptions.GoogleAPICallError:
-                pass
+            except Exception:
+                logger.debug("exception catched during wait()", exc_info=True)
         return _ExecutionResult._from_execution(
             execution, False, operation.metadata.log_uri
         )

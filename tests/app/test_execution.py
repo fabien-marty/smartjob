@@ -10,7 +10,6 @@ from smartjob.app.execution import (
 )
 from smartjob.app.executor import ExecutionResult
 from smartjob.app.job import SmartJob
-from smartjob.app.retry import RetryConfig
 
 
 @pytest.fixture()
