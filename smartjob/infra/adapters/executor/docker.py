@@ -55,7 +55,6 @@ class DockerExecutorAdapter(ExecutorPort):
                 logger.debug("Container stopped")
             except Exception:
                 logger.debug("exception catched during wait()", exc_info=True)
-                pass
             return _ExecutionResult._from_execution(
                 execution,
                 success=res["StatusCode"] == 0,

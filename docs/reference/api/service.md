@@ -2,10 +2,10 @@
 
 To get a [smartjob.ExecutorService][] use the function [smartjob.get_executor_service][].
 
-Then you can use the three methods on [smartjob.ExecutorService][] to execute [smartjob.SmartJob][] jobs
+Then you can use the two methods on [smartjob.ExecutorService][] to execute [smartjob.SmartJob][] jobs
 (depending on your use-case).
 
-These methods will return a [smartjob.ExecutionResult][] object (when the job is fully executed) or a [smartjob.ExecutionResultFuture][]  (a kind of future on the job result).
+These methods will return a [smartjob.ExecutionResult][] object (when the job is fully executed) or a future on it. 
 
 ## Getting the executor service
 
@@ -24,12 +24,12 @@ These methods will return a [smartjob.ExecutionResult][] object (when the job is
 
 ## ExecutionResult classes
 
-::: smartjob.ExecutionResult
+::: smartjob.SchedulingDetails
     options:
       show_root_heading: true
       heading_level: 3
 
-::: smartjob.ExecutionResultFuture
+::: smartjob.ExecutionResult
     options:
       show_root_heading: true
       heading_level: 3

@@ -6,8 +6,8 @@ We try to keep a unified way of dealing with CloudRun jobs, Vertex AI custom job
 
 ### Concepts
 
-- a [smartjob](/reference/api/jobs/) is only an execution *(with CloudRun Jobs, jobs and jobs executions are two separate things, we completely hide this)* 
-- each [smartjob](/reference/api/jobs/) can have an "input" and an "output" (in the form of a GCS bucket path):
+- a smartjob is only an execution *(with CloudRun Jobs, jobs and jobs executions are two separate things, we completely hide this)* 
+- each smartjob can have an "input" and an "output" (in the form of a GCS bucket path):
     - these input/output are "mounted" as directories in the container tree
     - the input directory full path is set in the `INPUT_PATH` environment variable *(automatically injected by the library)*
     - the output directory full path is set in the `OUTPUT_PATH` environment variable *(automatically injected by the library)*
@@ -16,17 +16,9 @@ We try to keep a unified way of dealing with CloudRun jobs, Vertex AI custom job
     - the local Python script is automatically uploaded in the configured `staging_bucket` *(that will be mounted in the container tree)* 
     - job args are overriden to execute the Python script *(instead of the default docker image command/arguments)*
 without rebuilding/pushing a whole docker image at each attempt
-
-## CloudRun specifics 
-
-- we use a threadpool (default size: `10`) for concurrency but only for uploading/downloading files as the CloudRun API is fully async
-
-## Vertex specifics
-
 - we use a threadpool (default size: `10`) for concurrency
 
 ## (local) Docker specifics
 
 - we use a named volume `smartjob-staging` for "input"/"ouput" 
 - we use a container `smartjob-dummy-container` (based on `docker.io/alpine:latest` image) for copying files from/to the staging volume (the container is created but never started)
-- we use a threadpool (default size: `10`) for concurrency

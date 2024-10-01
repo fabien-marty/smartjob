@@ -2,7 +2,7 @@
 
 ## What is it?
 
-**SmartJob** is a thin Python 3.11+ library for dealing with [GCP/Cloud Run Jobs](https://cloud.google.com/run), [GCP/VertexAI CustomJobs](https://cloud.google.com/vertex-ai/docs/training/create-custom-job) and (local) Docker:
+**SmartJob** is a thin Python 3.11+ job library for dealing with [GCP/Cloud Run Jobs](https://cloud.google.com/run), [GCP/VertexAI CustomJobs](https://cloud.google.com/vertex-ai/docs/training/create-custom-job) and (local) Docker (jobs):
 
 - in a **very simple** way
 - in a **unified** way *(with as little difference as possible between the 3 providers)*
