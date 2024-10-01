@@ -1,18 +1,22 @@
-import asyncio
+import concurrent.futures
 import json
 from dataclasses import dataclass, field
 from typing import cast
 
 import google.api_core.exceptions as gac_exceptions
+from google.api_core import operation
 from google.cloud import run_v2
 from google.protobuf.duration_pb2 import Duration
 from grpc import StatusCode
 from stlog import LogContext, getLogger
 
-from smartjob.app.execution import Execution, ExecutionResult
-from smartjob.app.executor import ExecutionResultFuture
+from smartjob.app.execution import Execution
+from smartjob.app.executor import (
+    ExecutorPort,
+    SchedulingDetails,
+    _ExecutionResult,
+)
 from smartjob.app.utils import hex_hash
-from smartjob.infra.adapters.executor.gcp import GCPExecutionResultFuture, GCPExecutor
 
 logger = getLogger("smartjob.executor.cloudrun")
 
@@ -23,26 +27,23 @@ class JobListCacheKey:
     region: str
 
 
-class CloudRunExecutionResultFuture(GCPExecutionResultFuture):
-    def _get_result_from_future(self, future: asyncio.Future) -> ExecutionResult:
-        try:
-            task_result = future.result()
-            success = False
-            castedResult = cast(run_v2.Execution, task_result)
-            success = castedResult.succeeded_count > 0
-            return ExecutionResult._from_execution(
-                self._execution, success, self.log_url
-            )
-        except gac_exceptions.GoogleAPICallError:
-            pass
-        except asyncio.CancelledError:
-            self._execution.cancelled = True
-        return ExecutionResult._from_execution(self._execution, False, self.log_url)
-
-
 @dataclass
-class CloudRunExecutorAdapter(GCPExecutor):
-    client_cache: run_v2.JobsAsyncClient | None = field(default=None, init=False)
+class CloudRunExecutorAdapter(ExecutorPort):
+    _client: run_v2.JobsClient | None = field(default=None, init=False)
+    max_workers: int = 10
+    _executor: concurrent.futures.ThreadPoolExecutor | None = field(
+        default=None, init=False
+    )
+
+    def __post_init__(self):
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=self.max_workers
+        )
+
+    @property
+    def executor(self) -> concurrent.futures.ThreadPoolExecutor:
+        assert self._executor is not None
+        return self._executor
 
     def job_hash(self, execution: Execution) -> str:
         job = execution.job
@@ -69,13 +70,13 @@ class CloudRunExecutorAdapter(GCPExecutor):
         )
 
     @property
-    def client(self) -> run_v2.JobsAsyncClient:
+    def client(self) -> run_v2.JobsClient:
         # lazy-init to circumvent some 'attached to a different loop' issues
-        if self.client_cache is None:
-            self.client_cache = run_v2.JobsAsyncClient()
-        return self.client_cache
+        if self._client is None:
+            self._client = run_v2.JobsClient()
+        return self._client
 
-    async def _create_job_if_needed(self, execution: Execution):
+    def _create_job_if_needed(self, execution: Execution):
         job = execution.job
         config = execution.config
         volumes: list[run_v2.Volume] = []
@@ -106,7 +107,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
         logger.info("Let's check if Cloud Run Job already exists...")
         request = run_v2.GetJobRequest(name=self.full_cloud_run_job_name(execution))
         try:
-            await self.client.get_job(request=request)
+            self.client.get_job(request=request)
             logger.info("Done checking Cloud Run Job")
             return
         except Exception:
@@ -147,20 +148,40 @@ class CloudRunExecutorAdapter(GCPExecutor):
             ),
         )
         logger.info("Let's create a new Cloud Run Job...")
-        operation = await self.client.create_job(request=request)
-        await operation.result()
+        operation = self.client.create_job(request=request)
+        operation.result()
         logger.debug("Done creating Cloud Run Job")
 
-    async def create_job_if_needed(self, execution: Execution):
+    def create_job_if_needed(self, execution: Execution):
         try:
-            await self._create_job_if_needed(execution)
+            self._create_job_if_needed(execution)
         except gac_exceptions.GoogleAPICallError as e:
             if e.grpc_status_code != StatusCode.ALREADY_EXISTS:
                 raise
             # we can ignore this
             logger.debug("Done creating Cloud Run Job (already exists)")
 
-    async def schedule(self, execution: Execution) -> ExecutionResultFuture:
+    def wait(
+        self, execution: Execution, operation: operation.Operation, log_context: dict
+    ) -> _ExecutionResult:
+        """Note: executed in another thread."""
+        with LogContext.bind(**log_context):
+            try:
+                task_result = operation.result()
+                castedResult = cast(run_v2.Execution, task_result)
+                success = castedResult.succeeded_count > 0
+                return _ExecutionResult._from_execution(
+                    execution, success, operation.metadata.log_uri
+                )
+            except Exception:
+                logger.debug("exception catched during wait()", exc_info=True)
+        return _ExecutionResult._from_execution(
+            execution, False, operation.metadata.log_uri
+        )
+
+    def schedule(
+        self, execution: Execution, forget: bool
+    ) -> tuple[SchedulingDetails, concurrent.futures.Future[_ExecutionResult] | None]:
         job = execution.job
         config = execution.config
         job_id = self.cloud_run_job_name(execution)
@@ -168,7 +189,7 @@ class CloudRunExecutorAdapter(GCPExecutor):
         with LogContext.bind(
             cloudrun_job_id=job_id, project=config._project, region=config._region
         ):
-            await self.create_job_if_needed(execution)
+            self.create_job_if_needed(execution)
             request = run_v2.RunJobRequest(
                 name=full_name,
                 overrides=run_v2.RunJobRequest.Overrides(
@@ -193,13 +214,16 @@ class CloudRunExecutorAdapter(GCPExecutor):
                 add_envs=execution.add_envs_as_string,
                 timeout_s=config._timeout_config.timeout_seconds,
             )
-            operation = await self.client.run_job(request=request)
-            return CloudRunExecutionResultFuture(
-                asyncio.create_task(operation.result()),
-                execution=execution,
-                storage_service=self.storage_service,
-                log_url=operation.metadata.log_uri,
+            operation = self.client.run_job(request=request)
+            scheduling_details = SchedulingDetails(
+                execution_id=execution.id, log_url=operation.metadata.log_uri
             )
+            if forget:
+                return scheduling_details, None
+            future = self.executor.submit(
+                self.wait, execution, operation, LogContext.getall()
+            )
+            return scheduling_details, future
 
     def get_name(self) -> str:
         return "cloudrun"

@@ -1,5 +1,4 @@
 import datetime
-import json
 import os
 import shlex
 from dataclasses import dataclass, field
@@ -261,7 +260,6 @@ class Execution:
         default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc),
         init=False,
     )
-    cancelled: bool = field(default=False, init=False)
     add_envs: dict[str, str] = field(default_factory=dict)
     overridden_args: list[str] = field(default_factory=list)
 
@@ -293,74 +291,3 @@ class Execution:
             "smartjob": "true",
             "smartjob.namespace": self.job.namespace,
         }
-
-
-@dataclass
-class ExecutionResult:
-    """ExecutionResult is the (final) result of a job execution.
-
-    Attributes:
-        success: Whether the job has succeeded or not.
-        created: The datetime when the job has started.
-        stopped: The datetime when the job has stopped.
-        execution_id: The execution id of the job.
-        job_name: The name of the job.
-        job_namespace: The namespace of the job.
-        log_url: The execution log url.
-        full_input_path: The full input path (starting with gs://).
-        full_output_path: The full output path (starting with gs//).
-        json_output: if the job has created a json file named smartjob.json in the output directory, it will be stored/decoded here.
-
-    """
-
-    success: bool
-    created: datetime.datetime
-    stopped: datetime.datetime
-    execution_id: str
-    job_name: str
-    job_namespace: str
-    log_url: str
-    json_output: dict | list | str | float | int | bool | None = None
-
-    def __bool__(self) -> bool:
-        return self.success or False
-
-    def __str__(self) -> str:
-        if self.success:
-            state = "SUCCESS"
-        else:
-            state = "FAILURE"
-        if self.json_output is not None:
-            json_output = json.dumps(self.json_output, indent=4)
-        else:
-            json_output = "None"
-        res = f"""ExecutionResult(
-    job_name={self.job_name}, job_namespace={self.job_namespace},
-    execution_id={self.execution_id},
-    state={state}, duration_seconds={self.duration_seconds},
-    json_output={json_output}
-)"""
-        return res
-
-    @property
-    def duration_seconds(self) -> int:
-        """The duration of the job in seconds."""
-        return (self.stopped - self.created).seconds
-
-    @classmethod
-    def _from_execution(
-        cls,
-        execution: Execution,
-        success: bool,
-        log_url: str,
-    ) -> "ExecutionResult":
-        """Create a ExecutionResult from a SmartJobExecution."""
-        return cls(
-            created=execution.created,
-            execution_id=execution.id,
-            job_name=execution.job.name,
-            job_namespace=execution.job.namespace,
-            success=success,
-            stopped=datetime.datetime.now(tz=datetime.timezone.utc),
-            log_url=log_url,
-        )

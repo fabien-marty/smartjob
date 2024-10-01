@@ -6,7 +6,7 @@
 
 - in a **very simple** way
 - in a **unified** way *(with as little difference as possible between the 3 providers)*
-- in a **fully [async](https://docs.python.org/3/library/asyncio.html)** way *(in most cases, plain `asyncio` Python is enough for dealing with complex parallel workflows (including parralelism, chaining, conditionals...) and you don't need to learn another pipeline workflow)*
+- in an **async way** *(not with `asyncio` but with `concurrent.futures.Future` objects; in most cases, this is enough for dealing with complex parallel workflows (including parralelism, chaining, conditionals...) and you don't need to learn another pipeline workflow or switching your whole codebase to `asyncio`)*
 - in a **reactive** way *(when you're in the experimentation phase, you can pass the main Python script without rebuilding/pushing a whole docker image at each attempt)*
 - in a **production ready** way (with retries, timeouts...)
 

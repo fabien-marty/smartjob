@@ -14,7 +14,7 @@ class Input:
     filename: str
     """File name to be used in the input path (without /)."""
 
-    async def _create(self, bucket: str, path: str, storage_service: StorageService):
+    def _create(self, bucket: str, path: str, storage_service: StorageService):
         raise NotImplementedError("must be implemented in subclasses")
 
     def __post_init__(self):
@@ -29,8 +29,8 @@ class BytesInput(Input):
     content: bytes | str
     """Content to be written to the input path (can be bytes or string)."""
 
-    async def _create(self, bucket: str, path: str, storage_service: StorageService):
-        await storage_service.upload(self.content, bucket, f"{path}/{self.filename}")
+    def _create(self, bucket: str, path: str, storage_service: StorageService):
+        storage_service.upload(self.content, bucket, f"{path}/{self.filename}")
 
 
 @dataclass
@@ -50,9 +50,9 @@ class JsonInput(Input):
             "utf-8"
         )
 
-    async def _create(self, bucket: str, path: str, storage_service: StorageService):
+    def _create(self, bucket: str, path: str, storage_service: StorageService):
         bytesInput = BytesInput(filename=self.filename, content=self._as_bytes())
-        await bytesInput._create(bucket, path, storage_service)
+        bytesInput._create(bucket, path, storage_service)
 
 
 @dataclass
@@ -62,11 +62,11 @@ class LocalPathInput(Input):
     local_path: str
     """Local path to the file to be copied to the input path."""
 
-    async def _create(self, bucket: str, path: str, storage_service: StorageService):
+    def _create(self, bucket: str, path: str, storage_service: StorageService):
         with open(self.local_path, "rb") as f:
             content = f.read()
         bytesInput = BytesInput(filename=self.filename, content=content)
-        await bytesInput._create(bucket, path, storage_service)
+        bytesInput._create(bucket, path, storage_service)
 
 
 @dataclass
@@ -85,9 +85,9 @@ class GcsInput(Input):
                 "gcs_path must contain a / (excluding the gs:// prefix)"
             )
 
-    async def _create(self, bucket: str, path: str, storage_service: StorageService):
+    def _create(self, bucket: str, path: str, storage_service: StorageService):
         source_bucket = self.gcs_path[5:].split("/")[0]
         source_path = self.gcs_path[5:].split("/", 1)[1]
-        await storage_service.copy(
+        storage_service.copy(
             source_bucket, source_path, bucket, f"{path}/{self.filename}"
         )

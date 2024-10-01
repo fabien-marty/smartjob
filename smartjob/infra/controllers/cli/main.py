@@ -1,4 +1,3 @@
-import asyncio
 import json
 import shlex
 import sys
@@ -7,7 +6,6 @@ import typer
 import typer.core
 
 from smartjob.app.execution import ExecutionConfig
-from smartjob.app.executor import ExecutionResultFuture
 from smartjob.app.job import SmartJob
 from smartjob.app.retry import RetryConfig
 from smartjob.app.timeout import TimeoutConfig
@@ -99,9 +97,7 @@ def run(
         timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
-    result = executor_service.sync_run(
-        job, inputs=inputs, execution_config=execution_config
-    )
+    result = executor_service.run(job, inputs=inputs, execution_config=execution_config)
     return_code = 0
     if result:
         print("SUCCESS in %i seconds" % result.duration_seconds)
@@ -114,14 +110,6 @@ def run(
         print("JsonOutput:")
         print(json.dumps(result.json_output, indent=4))
     sys.exit(return_code)
-
-
-async def _schedule(
-    executor_service, job, inputs, execution_config
-) -> ExecutionResultFuture:
-    return await executor_service.schedule(
-        job, inputs=inputs, execution_config=execution_config
-    )
 
 
 @cli.command()
@@ -173,10 +161,9 @@ def schedule(
         timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
-    result_future = asyncio.run(
-        _schedule(executor_service, job, inputs, execution_config)
+    scheduling_result, _ = executor_service.schedule(
+        job, inputs=inputs, execution_config=execution_config, forget=True
     )
     print("SCHEDULED!")
-    print("Id:      %s" % result_future.execution_id)
-    print("Logs:    %s" % result_future.log_url)
-    result_future._cancel()
+    print("Id:      %s" % scheduling_result.execution_id)
+    print("Logs:    %s" % scheduling_result.log_url)

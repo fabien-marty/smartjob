@@ -29,7 +29,7 @@ job = SmartJob(
 # 'my-input-file' will be the filename in the input directory of the container
 # './local_script2.py' is the local path to the input file (you want to send)
 # (here we are sending the same script as input)
-result = job_executor_service.sync_run(
+result = job_executor_service.run(
     job,
     execution_config=execution_config,
     inputs=[LocalPathInput("my-input-file", "./local_script2.py")],

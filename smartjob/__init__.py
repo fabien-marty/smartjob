@@ -1,6 +1,11 @@
 from smartjob.app.exception import SmartJobException, SmartJobTimeoutException
-from smartjob.app.execution import ExecutionConfig, ExecutionResult
-from smartjob.app.executor import ExecutionResultFuture, ExecutorService
+from smartjob.app.execution import ExecutionConfig
+from smartjob.app.executor import (
+    ExecutionResult,
+    ExecutionResultFuture,
+    ExecutorService,
+    SchedulingDetails,
+)
 from smartjob.app.input import BytesInput, GcsInput, Input, JsonInput, LocalPathInput
 from smartjob.app.job import SmartJob
 from smartjob.app.retry import RetryConfig
@@ -14,6 +19,7 @@ __all__ = [
     "SmartJob",
     "ExecutorService",
     "ExecutionResult",
+    "SchedulingDetails",
     "ExecutionResultFuture",
     "Input",
     "JsonInput",

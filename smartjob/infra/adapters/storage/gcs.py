@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 from typing import Any
 
 from google.api_core.exceptions import NotFound, PreconditionFailed
@@ -10,11 +8,10 @@ from smartjob.app.storage import StoragePort
 
 
 class GcsStorageAdapter(StoragePort):
-    def __init__(self, max_workers: int = 10):
-        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    def __init__(self):
         self.storage_client = storage.Client()
 
-    def sync_upload(
+    def upload(
         self,
         content: bytes | str,
         destination_bucket: str,
@@ -35,23 +32,7 @@ class GcsStorageAdapter(StoragePort):
         except PreconditionFailed:
             pass
 
-    async def upload(
-        self,
-        content: bytes | str,
-        destination_bucket: str,
-        destination_path: str,
-        only_if_not_exists: bool = True,
-    ):
-        cf_future = self.executor.submit(
-            self.sync_upload,
-            content,
-            destination_bucket,
-            destination_path,
-            only_if_not_exists=only_if_not_exists,
-        )
-        await asyncio.wrap_future(cf_future)
-
-    def sync_copy(
+    def copy(
         self,
         source_bucket: str,
         source_path: str,
@@ -67,25 +48,7 @@ class GcsStorageAdapter(StoragePort):
         db = self.storage_client.bucket(destination_bucket)
         sb.copy_blob(source_blob, db, destination_path, **kwargs)
 
-    async def copy(
-        self,
-        source_bucket: str,
-        source_path: str,
-        destination_bucket: str,
-        destination_path: str,
-        only_if_not_exists: bool = True,
-    ):
-        cf_future = self.executor.submit(
-            self.sync_copy,
-            source_bucket,
-            source_path,
-            destination_bucket,
-            destination_path,
-            only_if_not_exists=only_if_not_exists,
-        )
-        await asyncio.wrap_future(cf_future)
-
-    def sync_download(
+    def download(
         self,
         source_bucket: str,
         source_path: str,
@@ -96,15 +59,3 @@ class GcsStorageAdapter(StoragePort):
             return blob.download_as_bytes(retry=None)
         except NotFound:
             return b""
-
-    async def download(
-        self,
-        source_bucket: str,
-        source_path: str,
-    ) -> bytes:
-        cf_future = self.executor.submit(
-            self.sync_download,
-            source_bucket,
-            source_path,
-        )
-        return await asyncio.wrap_future(cf_future)
