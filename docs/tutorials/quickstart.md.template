@@ -18,7 +18,7 @@ Let's start to use the library with simple synchronous Python code:
 {{ "cat quickstart1.py"|shell() }}
 ```
 
-## Use async features of Python to launch 10 jobs in parallel
+## Launch 10 jobs in parallel
 
 ``` python
 {{ "cat quickstart2.py"|shell() }}

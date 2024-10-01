@@ -2,7 +2,6 @@ from smartjob.app.exception import SmartJobException, SmartJobTimeoutException
 from smartjob.app.execution import ExecutionConfig
 from smartjob.app.executor import (
     ExecutionResult,
-    ExecutionResultFuture,
     ExecutorService,
     SchedulingDetails,
 )
@@ -20,7 +19,6 @@ __all__ = [
     "ExecutorService",
     "ExecutionResult",
     "SchedulingDetails",
-    "ExecutionResultFuture",
     "Input",
     "JsonInput",
     "BytesInput",
