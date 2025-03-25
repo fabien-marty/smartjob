@@ -17,6 +17,7 @@ typer = ">= 0.12.3"
 tenacity = "^9.0.0"
 docker = "^7.1.0"
 
+google-cloud-batch = "^0.17.35"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.5.5"
 mypy = "^1.11.1"

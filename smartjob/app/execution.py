@@ -42,19 +42,19 @@ class ExecutionConfig:
     """Timeout configuration."""
 
     project: str | None = None
-    """GCP project (only for cloudrun/vertex executor)."""
+    """GCP project (only for cloudrun/cloudbatch/vertex executor)."""
 
     region: str | None = None
-    """GCP region (only for cloudrun/vertex executor)."""
+    """GCP region (only for cloudrun/cloudbatch/vertex executor)."""
 
     labels: dict[str, str] | None = None
-    """GCP labels (only for cloudrun/vertex executor)."""
+    """GCP labels (only for cloudrun/cloudbatch/vertex executor)."""
 
     staging_bucket: str | None = None
-    """Staging bucket (for input, output and/or loading python_script_path, only for cloudrun/vertex executor)."""
+    """Staging bucket (for input, output and/or loading python_script_path, only for cloudrun/cloudbatch/vertex executor)."""
 
     service_account: str | None = None
-    """Service account (email) to use for the job execution (only for cloudrun/vertex executor)."""
+    """Service account (email) to use for the job execution (only for cloudrun/cloudbatch/vertex executor)."""
 
     cpu: float | None = None
     """Number of requested CPUs (only for cloudrun executor)."""
@@ -78,10 +78,10 @@ class ExecutionConfig:
     """Boot disk size in Gb (only for vertex executor)."""
 
     vpc_connector_network: str | None = None
-    """VPC connector network (only for cloudrun executor)."""
+    """VPC connector network (only for cloudrun/cloudbatch executor)."""
 
     vpc_connector_subnetwork: str | None = None
-    """VPC connector subnetwork (only for cloudrun executor)."""
+    """VPC connector subnetwork (only for cloudrun/cloudbatch executor)."""
 
     @property
     def _retry_config(self) -> RetryConfig:
@@ -172,7 +172,20 @@ class ExecutionConfig:
                 "boot_disk_size_gb",
             ]:
                 if getattr(self, field_name) is not None:
-                    logger.warning(f"{field_name} is ignored for cloudrun executor")
+                    logger.warning(
+                        f"{field_name} is ignored for f{executor_name} executor"
+                    )
+        elif executor_name == "cloudbatch":
+            for field_name in [
+                "cpu",
+                "memory_gb",
+                "accelerator_type",
+                "accelerator_count",
+                "boot_disk_type",
+                "boot_disk_size_gb",
+            ]:
+                if getattr(self, field_name) is not None:
+                    logger.warning(f"{field_name} is ignored for cloudbatch executor")
         elif executor_name == "vertex":
             for field_name in [
                 "cpu",
@@ -240,11 +253,11 @@ class ExecutionConfig:
         if self.labels is None:
             self.labels = {}
         # Post checks
-        if executor_name in ("cloudrun", "vertex"):
+        if executor_name in ("cloudrun", "cloudbatch", "vertex"):
             for field_name in ["staging_bucket", "project", "region"]:
                 if getattr(self, field_name) is None:
                     raise SmartJobException(
-                        f"{field_name} is required for cloudrun executor"
+                        f"{field_name} is required for f{executor_name} executor"
                     )
             if not self.staging_bucket.startswith("gs://"):  # type: ignore
                 raise SmartJobException("staging_bucket must start with gs://")

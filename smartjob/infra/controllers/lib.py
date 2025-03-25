@@ -31,6 +31,13 @@ def get_executor_service(
 
         adapter = CloudRunExecutorAdapter(max_workers=max_workers)
         storage_adapter = GcsStorageAdapter()
+    elif type == "cloudbatch":
+        from smartjob.infra.adapters.executor.cloudbatch import (
+            CloudBatchExecutorAdapter,
+        )
+
+        adapter = CloudBatchExecutorAdapter(max_workers=max_workers)
+        storage_adapter = GcsStorageAdapter()
     elif type == "vertex":
         from smartjob.infra.adapters.executor.vertex import VertexExecutorAdapter
 
@@ -43,7 +50,7 @@ def get_executor_service(
         storage_adapter = DockerStorageAdapter()
     else:
         raise ValueError(
-            f"Invalid executor type: {type} => must be 'cloudrun', 'vertex' or 'docker'"
+            f"Invalid executor type: {type} => must be 'cloudrun', 'cloudbatch', 'vertex' or 'docker'"
         )
     if not use_cache or type not in __cache:
         __cache[type] = ExecutorService(
