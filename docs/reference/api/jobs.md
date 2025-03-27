@@ -5,6 +5,11 @@ At your user level, you have to manipulate two classes:
 - [smartjob.SmartJob][] to define jobs
 - [smartjob.ExecutionConfig][] to define "execution config" for running your jobs
 
+Depending on the options you want to set, you can also use the following classes:
+
+- [smartjob.RetryConfig][] to define "retries" in `ExecutionConfig`
+- [smartjob.TimeoutConfig][] to define "timeouts" in `ExecutionConfig`
+
 ## SmartJob class
 
 ::: smartjob.SmartJob
@@ -14,8 +19,6 @@ At your user level, you have to manipulate two classes:
 
 
 ## ExecutionConfig class
-
-Create an instance of this class if you are targeting Cloud Run Jobs.
 
 ::: smartjob.ExecutionConfig
     options:

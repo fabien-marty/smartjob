@@ -16,8 +16,8 @@ def get_executor_service(
     """Return a singleton instance of ExecutorService (initialized on first call with given arguments).
 
     Args:
-        type: The type of executor to use ('cloudrun', 'vertex' or 'docker').
-        max_workers: Maximum number of workers for the vertex executor and for the file uploader.
+        type: The type of executor to use ('cloudrun', 'cloudbatch', 'vertex' or 'docker').
+        max_workers: Maximum number of workers
         use_cache: if set to True, the same instance will be returned for the same type.
 
     Returns:

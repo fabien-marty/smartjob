@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "smartjob"
 version = "0.0.1"
-description = "Little async python library for dealing with GCP/Cloud Run Jobs and GCP/VertexAI CustomJobs"
+description = "Little async python library for dealing with GCP/Cloud Run Jobs, GCP/Cloud Batch Jobs, GCP/VertexAI CustomJobs and (local) Docker jobs"
 authors = ["Fabien MARTY <fab@fabien-marty.dev>"]
 readme = "README.md"
 packages = [{ include = "smartjob" }]

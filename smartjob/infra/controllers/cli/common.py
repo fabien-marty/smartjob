@@ -103,7 +103,7 @@ LogLevelArgument = typer.Option("INFO", envvar="LOG_LEVEL", help="log level")
 ProjectArgument = typer.Option(None, envvar="SMARTJOB_PROJECT", help="GCP project")
 RegionArgument = typer.Option(None, envvar="SMARTJOB_REGION", help="GCP region")
 ExecutorArgument = typer.Option(
-    "cloudrun", help="executor type ('vertex', 'cloudrun' or 'docker')"
+    "cloudrun", help="executor type ('vertex', 'cloudrun', 'cloudbatch' or 'docker')"
 )
 ServiceAccountArgument = typer.Option(
     None, envvar="SMARTJOB_SERVICE_ACCOUNT", help="GCP service account to use"
