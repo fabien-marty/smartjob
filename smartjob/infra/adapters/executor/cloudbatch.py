@@ -2,7 +2,7 @@ import concurrent
 import time
 from dataclasses import dataclass, field
 
-from google.cloud import batch_v1
+from google.cloud import batch_v1, compute_v1
 from google.protobuf.duration_pb2 import Duration
 from stlog import LogContext, getLogger
 
@@ -10,6 +10,72 @@ from smartjob.app.execution import Execution
 from smartjob.app.executor import ExecutorPort, SchedulingDetails, _ExecutionResult
 
 logger = getLogger("smartjob.executor.cloudbatch")
+
+
+@dataclass
+class ZoneExplorer:
+    _client: compute_v1.ZonesClient | None = None
+    _cache: dict[tuple[str, str], set[str]] = field(default_factory=dict)
+
+    @property
+    def client(self) -> compute_v1.ZonesClient:
+        if self._client is None:
+            self._client = compute_v1.ZonesClient()
+        return self._client
+
+    def get_zones(self, project: str, region: str) -> set[str]:
+        if (project, region) not in self._cache:
+            tmp = self.client.list(project=project)
+            self._cache[(project, region)] = {
+                x.name for x in tmp if x.region.split("/")[-1] == region
+            }
+        return self._cache[(project, region)]
+
+
+ZONE_EXPLORER = ZoneExplorer()
+
+
+@dataclass
+class MachineTypeExplorer:
+    zone_explorer: ZoneExplorer
+    _client: compute_v1.MachineTypesClient | None = None
+    _cache: dict[tuple[str, str, str], compute_v1.MachineType] = field(
+        default_factory=dict
+    )
+
+    @property
+    def client(self) -> compute_v1.MachineTypesClient:
+        if self._client is None:
+            self._client = compute_v1.MachineTypesClient()
+        return self._client
+
+    def _get_machine_type_info(
+        self, project: str, region: str, machine_type: str
+    ) -> compute_v1.MachineType:
+        if (project, region, machine_type) not in self._cache:
+            zones = self.zone_explorer.get_zones(project, region)
+            if len(zones) == 0:
+                raise Exception(f"can't find any zone for this region: {region}")
+            zone = sorted(zones)[0]
+            self._cache[(project, region, machine_type)] = self.client.get(
+                project=project, machine_type=machine_type, zone=zone
+            )
+        return self._cache[(project, region, machine_type)]
+
+    def get_machine_type_memory_mb(
+        self, project: str, region: str, machine_type: str
+    ) -> int:
+        machine_type_info = self._get_machine_type_info(project, region, machine_type)
+        return machine_type_info.memory_mb
+
+    def get_machine_type_cpu_count(
+        self, project: str, region: str, machine_type: str
+    ) -> int:
+        machine_type_info = self._get_machine_type_info(project, region, machine_type)
+        return machine_type_info.guest_cpus
+
+
+MACHINE_TYPE_EXPLORER = MachineTypeExplorer(zone_explorer=ZONE_EXPLORER)
 
 
 @dataclass
@@ -63,8 +129,8 @@ class CloudBatchExecutorAdapter(ExecutorPort):
             network_policy = batch_v1.AllocationPolicy.NetworkPolicy(
                 network_interfaces=[
                     batch_v1.AllocationPolicy.NetworkInterface(
-                        network=execution.config.vpc_connector_network,
-                        subnetwork=execution.config.vpc_connector_subnetwork,
+                        network=f"projects/{execution.config._project}/global/networks/{execution.config.vpc_connector_network}",
+                        subnetwork=f"projects/{execution.config._project}/regions/{execution.config._region}/subnetworks/{execution.config.vpc_connector_subnetwork}",
                     )
                 ]
             )
@@ -126,6 +192,19 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                                     ),
                                 )
                             ],
+                            compute_resource=batch_v1.ComputeResource(
+                                memory_mib=MACHINE_TYPE_EXPLORER.get_machine_type_memory_mb(
+                                    execution.config._project,
+                                    execution.config._region,
+                                    execution.config._machine_type,
+                                ),
+                                cpu_milli=MACHINE_TYPE_EXPLORER.get_machine_type_cpu_count(
+                                    execution.config._project,
+                                    execution.config._region,
+                                    execution.config._machine_type,
+                                )
+                                * 1000,
+                            ),
                             volumes=volumes,
                             # Add timeout configuration
                             max_run_duration=Duration(
