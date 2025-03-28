@@ -57,6 +57,7 @@ class MachineTypeExplorer:
             if len(zones) == 0:
                 raise Exception(f"can't find any zone for this region: {region}")
             zone = sorted(zones)[0]
+            logger.debug("zone", zone=zone)
             self._cache[(project, region, machine_type)] = self.client.get(
                 project=project, machine_type=machine_type, zone=zone
             )
@@ -66,12 +67,26 @@ class MachineTypeExplorer:
         self, project: str, region: str, machine_type: str
     ) -> int:
         machine_type_info = self._get_machine_type_info(project, region, machine_type)
+        logger.debug(
+            "get_machine_type_memory_mb",
+            value=machine_type_info.memory_mb,
+            project=project,
+            region=region,
+            machine_type=machine_type,
+        )
         return machine_type_info.memory_mb
 
     def get_machine_type_cpu_count(
         self, project: str, region: str, machine_type: str
     ) -> int:
         machine_type_info = self._get_machine_type_info(project, region, machine_type)
+        logger.debug(
+            "get_machine_type_cpu_count",
+            value=machine_type_info.guest_cpus,
+            project=project,
+            region=region,
+            machine_type=machine_type,
+        )
         return machine_type_info.guest_cpus
 
 
