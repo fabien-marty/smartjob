@@ -264,7 +264,7 @@ class ExecutionConfig:
         if self.labels is None:
             self.labels = {}
         if self.install_ops_agent is None:
-            self.install_ops_agent = True
+            self.install_ops_agent = False
         # Post checks
         if executor_name in ("cloudrun", "cloudbatch", "vertex"):
             for field_name in ["staging_bucket", "project", "region"]:
