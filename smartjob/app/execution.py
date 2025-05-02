@@ -83,6 +83,9 @@ class ExecutionConfig:
     vpc_connector_subnetwork: str | None = None
     """VPC connector subnetwork (only for cloudrun/cloudbatch executor)."""
 
+    install_ops_agent: bool | None = None
+    """Install ops agent (only for cloudbatch executor)."""
+
     @property
     def _retry_config(self) -> RetryConfig:
         assert self.retry_config is not None
@@ -157,6 +160,11 @@ class ExecutionConfig:
         assert self.boot_disk_size_gb is not None
         return self.boot_disk_size_gb
 
+    @property
+    def _install_ops_agent(self) -> bool:
+        assert self.install_ops_agent is not None
+        return self.install_ops_agent
+
     def fix_timeout_config(self) -> None:
         if self.timeout_config is None:
             self.timeout_config = TimeoutConfig()
@@ -170,6 +178,7 @@ class ExecutionConfig:
                 "accelerator_count",
                 "boot_disk_type",
                 "boot_disk_size_gb",
+                "install_ops_agent",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(
@@ -192,6 +201,7 @@ class ExecutionConfig:
                 "memory_gb",
                 "vpc_connector_network",
                 "vpc_connector_subnetwork",
+                "install_ops_agent",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for vertex executor")
@@ -207,6 +217,7 @@ class ExecutionConfig:
                 "labels",
                 "vpc_connector_network",
                 "vpc_connector_subnetwork",
+                "install_ops_agent",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for docker executor")
@@ -252,6 +263,8 @@ class ExecutionConfig:
             self.memory_gb = DEFAULT_MEMORY_GB
         if self.labels is None:
             self.labels = {}
+        if self.install_ops_agent is None:
+            self.install_ops_agent = True
         # Post checks
         if executor_name in ("cloudrun", "cloudbatch", "vertex"):
             for field_name in ["staging_bucket", "project", "region"]:

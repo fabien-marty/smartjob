@@ -189,6 +189,7 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                             policy=batch_v1.AllocationPolicy.InstancePolicy(
                                 machine_type=execution.config._machine_type,
                             ),
+                            install_ops_agent=execution.config._install_ops_agent,
                         )
                     ],
                 ),
