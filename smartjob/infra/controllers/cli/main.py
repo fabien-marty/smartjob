@@ -27,6 +27,7 @@ from smartjob.infra.controllers.cli.common import (
     PythonScriptPathArgument,
     RegionArgument,
     ServiceAccountArgument,
+    SidecarsContainerImagesArgument,
     StagingBucketArgument,
     TimeoutSecondsArgument,
     VpcConnectorNetwork,
@@ -71,6 +72,7 @@ def run(
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
     machine_type: str = MachineOption,
     timeout_seconds: int = TimeoutSecondsArgument,
+    sidecars_container_images: list[str] = SidecarsContainerImagesArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -95,6 +97,7 @@ def run(
         vpc_connector_subnetwork=vpc_connector_subnetwork,
         machine_type=machine_type,
         timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
+        sidecars_container_images=sidecars_container_images,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     result = executor_service.run(job, inputs=inputs, execution_config=execution_config)
@@ -135,6 +138,7 @@ def schedule(
     vpc_connector_subnetwork: str = VpcConnectorSubNetwork,
     machine_type: str = MachineOption,
     timeout_seconds: int = TimeoutSecondsArgument,
+    sidecars_container_images: list[str] = SidecarsContainerImagesArgument,
 ):
     init_stlog(log_level)
     executor_service = get_executor_service(executor)
@@ -159,6 +163,7 @@ def schedule(
         vpc_connector_subnetwork=vpc_connector_subnetwork,
         machine_type=machine_type,
         timeout_config=TimeoutConfig(timeout_seconds=timeout_seconds),
+        sidecars_container_images=sidecars_container_images,
     )
     inputs = local_path_input_to_list(local_path_input) + gcs_input_to_list(gcs_input)
     scheduling_result, _ = executor_service.schedule(

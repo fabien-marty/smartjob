@@ -91,6 +91,18 @@ class CloudRunExecutorAdapter(ExecutorPort):
             )
         )
         volume_mounts.append(run_v2.VolumeMount(name="staging", mount_path="/staging"))
+        if config._sidecars_container_images:
+            volumes.append(
+                run_v2.Volume(
+                    name="sidecars",
+                    empty_dir=run_v2.EmptyDirVolumeSource(
+                        medium="MEMORY",
+                    ),
+                )
+            )
+            volume_mounts.append(
+                run_v2.VolumeMount(name="sidecars", mount_path="/shared")
+            )
         launch_stage = "BETA"
         vpc_access: run_v2.VpcAccess | None = None
         if config.vpc_connector_network and config.vpc_connector_subnetwork:
@@ -102,6 +114,36 @@ class CloudRunExecutorAdapter(ExecutorPort):
                         subnetwork=config.vpc_connector_subnetwork,
                     )
                 ],
+            )
+
+        containers = [
+            run_v2.Container(
+                name="container-0",
+                image=job.docker_image,
+                resources=run_v2.ResourceRequirements(
+                    startup_cpu_boost=False,
+                    limits={
+                        "cpu": f"{config._cpu}",
+                        "memory": f"{config._memory_gb}Gi",
+                    },
+                ),
+                volume_mounts=volume_mounts,
+            )
+        ]
+        for i, sidecar_image in enumerate(config._sidecars_container_images):
+            containers.append(
+                run_v2.Container(
+                    name=f"sidecar-{i + 1}",
+                    image=sidecar_image,
+                    resources=run_v2.ResourceRequirements(
+                        startup_cpu_boost=False,
+                        limits={
+                            "cpu": "1.0",
+                            "memory": "1Gi",
+                        },
+                    ),
+                    volume_mounts=volume_mounts,
+                )
             )
 
         logger.info("Let's check if Cloud Run Job already exists...")
@@ -126,20 +168,7 @@ class CloudRunExecutorAdapter(ExecutorPort):
                         execution_environment=run_v2.ExecutionEnvironment(
                             run_v2.ExecutionEnvironment.EXECUTION_ENVIRONMENT_GEN2
                         ),
-                        containers=[
-                            run_v2.Container(
-                                name="container-1",
-                                image=job.docker_image,
-                                resources=run_v2.ResourceRequirements(
-                                    startup_cpu_boost=False,
-                                    limits={
-                                        "cpu": f"{config._cpu}",
-                                        "memory": f"{config._memory_gb}Gi",
-                                    },
-                                ),
-                                volume_mounts=volume_mounts,
-                            )
-                        ],
+                        containers=containers,
                         volumes=volumes,
                         service_account=config.service_account,
                         vpc_access=vpc_access,
@@ -190,21 +219,32 @@ class CloudRunExecutorAdapter(ExecutorPort):
             cloudrun_job_id=job_id, project=config._project, region=config._region
         ):
             self.create_job_if_needed(execution)
+            container_overrides = [
+                run_v2.RunJobRequest.Overrides.ContainerOverride(
+                    name="container-0",
+                    args=execution.overridden_args,
+                    env=[
+                        run_v2.EnvVar(name=k, value=v)
+                        for k, v in execution.add_envs.items()
+                    ],
+                )
+            ]
+            for i, _ in enumerate(config._sidecars_container_images):
+                container_overrides.append(
+                    run_v2.RunJobRequest.Overrides.ContainerOverride(
+                        name=f"sidecar-{i + 1}",
+                        env=[
+                            run_v2.EnvVar(name=k, value=v)
+                            for k, v in execution.add_envs.items()
+                        ],
+                    )
+                )
             request = run_v2.RunJobRequest(
                 name=full_name,
                 overrides=run_v2.RunJobRequest.Overrides(
                     task_count=1,
                     timeout=Duration(seconds=config._timeout_config.timeout_seconds),
-                    container_overrides=[
-                        run_v2.RunJobRequest.Overrides.ContainerOverride(
-                            name="container-1",
-                            args=execution.overridden_args,
-                            env=[
-                                run_v2.EnvVar(name=k, value=v)
-                                for k, v in execution.add_envs.items()
-                            ],
-                        )
-                    ],
+                    container_overrides=container_overrides,
                 ),
             )
             logger.info(
