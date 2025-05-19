@@ -86,6 +86,9 @@ class ExecutionConfig:
     install_ops_agent: bool | None = None
     """Install ops agent (only for cloudbatch executor)."""
 
+    sidecars_container_images: list[str] | None = None
+    """List of container images for sidecars."""
+
     @property
     def _retry_config(self) -> RetryConfig:
         assert self.retry_config is not None
@@ -116,6 +119,11 @@ class ExecutionConfig:
     def _region(self) -> str:
         assert self.region is not None
         return self.region
+
+    @property
+    def _sidecars_container_images(self) -> list[str]:
+        assert self.sidecars_container_images is not None
+        return self.sidecars_container_images
 
     @property
     def _staging_bucket_name(self) -> str:
@@ -202,6 +210,7 @@ class ExecutionConfig:
                 "vpc_connector_network",
                 "vpc_connector_subnetwork",
                 "install_ops_agent",
+                "sidecars_container_images",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for vertex executor")
@@ -218,6 +227,7 @@ class ExecutionConfig:
                 "vpc_connector_network",
                 "vpc_connector_subnetwork",
                 "install_ops_agent",
+                "sidecars_container_images",
             ]:
                 if getattr(self, field_name) is not None:
                     logger.warning(f"{field_name} is ignored for docker executor")
@@ -237,6 +247,8 @@ class ExecutionConfig:
                 self.retry_config = RetryConfig(max_attempts_execute=1)
         # Default values
         self.fix_timeout_config()
+        if self.sidecars_container_images is None:
+            self.sidecars_container_images = []
         if self.retry_config is None:
             self.retry_config = RetryConfig()
         if self.staging_bucket is None:

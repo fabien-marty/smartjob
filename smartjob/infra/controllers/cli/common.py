@@ -99,6 +99,10 @@ GcsPathInputArguments = typer.Option(
     [],
     help="GCS path input (format: filename=full_source_gcs_path, can be used multiple times)",
 )
+SidecarsContainerImagesArgument = typer.Option(
+    [],
+    help="Sidecars container images (format: image_name, can be used multiple times)",
+)
 LogLevelArgument = typer.Option("INFO", envvar="LOG_LEVEL", help="log level")
 ProjectArgument = typer.Option(None, envvar="SMARTJOB_PROJECT", help="GCP project")
 RegionArgument = typer.Option(None, envvar="SMARTJOB_REGION", help="GCP region")

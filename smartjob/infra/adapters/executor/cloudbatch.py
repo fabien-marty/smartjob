@@ -168,6 +168,32 @@ class CloudBatchExecutorAdapter(ExecutorPort):
         job_id = f"{self._clean(execution.job.namespace)}-{self._clean(execution.job.name)}-{execution.id}"
         if len(job_id) > 63:
             job_id = job_id[:63]
+        vols = ["/mnt/disks/staging:/staging"]
+        if execution.config._sidecars_container_images:
+            vols.append("/mnt/disks/shared:/shared")
+        runnables = [
+            batch_v1.Runnable(
+                container=batch_v1.Runnable.Container(
+                    image_uri=execution.job.docker_image,
+                    commands=execution.overridden_args,
+                    volumes=vols,
+                ),
+                environment=batch_v1.Environment(variables=execution.add_envs),
+            )
+        ]
+        for sidecar_image in execution.config._sidecars_container_images:
+            runnables.insert(
+                0,
+                batch_v1.Runnable(
+                    container=batch_v1.Runnable.Container(
+                        image_uri=sidecar_image,
+                        volumes=["/mnt/disks/shared:/shared"],
+                    ),
+                    ignore_exit_status=True,
+                    background=True,
+                    environment=batch_v1.Environment(variables=execution.add_envs),
+                ),
+            )
         job = self.client.create_job(
             job_id=job_id,
             parent=self.parent_name(execution),
@@ -196,18 +222,7 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                 task_groups=[
                     batch_v1.TaskGroup(
                         task_spec=batch_v1.TaskSpec(
-                            runnables=[
-                                batch_v1.Runnable(
-                                    container=batch_v1.Runnable.Container(
-                                        image_uri=execution.job.docker_image,
-                                        commands=execution.overridden_args,
-                                        volumes=["/mnt/disks/staging:/staging"],
-                                    ),
-                                    environment=batch_v1.Environment(
-                                        variables=execution.add_envs
-                                    ),
-                                )
-                            ],
+                            runnables=runnables,
                             compute_resource=batch_v1.ComputeResource(
                                 memory_mib=MACHINE_TYPE_EXPLORER.get_machine_type_memory_mb(
                                     execution.config._project,
