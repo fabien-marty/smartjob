@@ -177,6 +177,7 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                     image_uri=execution.job.docker_image,
                     commands=execution.overridden_args,
                     volumes=vols,
+                    options="--network host",
                 ),
                 environment=batch_v1.Environment(variables=execution.add_envs),
             )
@@ -188,6 +189,7 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                     container=batch_v1.Runnable.Container(
                         image_uri=sidecar_image,
                         volumes=["/mnt/disks/shared:/shared"],
+                        options="--network host",
                     ),
                     ignore_exit_status=True,
                     background=True,
