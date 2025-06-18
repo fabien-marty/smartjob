@@ -216,6 +216,10 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                         batch_v1.AllocationPolicy.InstancePolicyOrTemplate(
                             policy=batch_v1.AllocationPolicy.InstancePolicy(
                                 machine_type=execution.config._machine_type,
+                                boot_disk=batch_v1.AllocationPolicy.Disk(
+                                    type="pd-balanced",
+                                    size_gb=100,
+                                ),
                             ),
                             install_ops_agent=execution.config._install_ops_agent,
                         )
