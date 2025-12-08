@@ -218,7 +218,7 @@ class CloudBatchExecutorAdapter(ExecutorPort):
                                 machine_type=execution.config._machine_type,
                                 boot_disk=batch_v1.AllocationPolicy.Disk(
                                     type="pd-balanced",
-                                    size_gb=100,
+                                    size_gb=200,
                                 ),
                             ),
                             install_ops_agent=execution.config._install_ops_agent,
